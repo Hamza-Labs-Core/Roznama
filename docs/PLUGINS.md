@@ -118,7 +118,9 @@ normalization handed to the host. The **same approach serves** `calendar.read` (
 ## 5. Assembly plugins & the SDK contract
 
 Plugins compile against **`Calendar.Plugin.Abstractions`** — a small, stable, semver'd assembly. It is
-the *only* shared type boundary between host and plugin.
+the *only* shared type boundary between host and plugin. The excerpt below is a summary; the **complete,
+authoritative surface (every interface, DTO, and enum) is pinned in [SDK-CONTRACT.md](SDK-CONTRACT.md)** —
+when names differ, that document wins.
 
 ```csharp
 namespace Calendar.Plugin.Abstractions;

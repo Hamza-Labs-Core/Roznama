@@ -16,8 +16,8 @@ Each phase ends with something you can run.
 
 - [ ] Create `Calendar.sln` + projects from [Solution layout](ARCHITECTURE.md#18-solution-layout),
       including **`Calendar.Plugin.Abstractions`** first — implement it straight from [SDK-CONTRACT.md](SDK-CONTRACT.md).
-- [ ] **Plugin registry + loader**: `AssemblyLoadContext` for assembly plugins, manifest parsing,
-      capability registration. Stub connector engine.
+- [ ] **Plugin registry + loader** per the [plugin host design](PLUGIN-HOST.md): `AssemblyLoadContext`
+      for assembly plugins, manifest parsing, capability registration. Stub connector engine.
 - [ ] EF Core + SQLite; first migration from the full [data schema](DATA-SCHEMA.md)
       (all tables, indexes, recurrence & sync metadata).
 - [ ] Blazor WASM shell per the [wireframes](UI-WIREFRAMES.md): sidebar (accounts/calendars/categories)
@@ -93,7 +93,7 @@ Each phase ends with something you can run.
 ---
 
 ### Cross-cutting, every phase
-- Tests for the dedup engine, recurrence expansion, visibility pipeline, route-gap logic, and the
-  connector engine.
+- Tests per the [testing strategy](TESTING.md): dedup engine, recurrence expansion, visibility pipeline,
+  route-gap logic, the connector engine, and the manifest guard tests.
 - Least-privilege scopes; host-owned secrets; per-plugin egress allowlist + budgets.
 - Every new integration is a **plugin** behind the SDK — the core never changes to add one.

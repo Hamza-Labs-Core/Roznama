@@ -46,6 +46,7 @@ mapping) with **no code**.
 
 - [Architecture](docs/ARCHITECTURE.md) — system design, capability catalog, domain model, geo, security.
 - [Plugins](docs/PLUGINS.md) — the SDK contract overview, manifest spec, declarative connectors, sandboxing.
+- [Plugin host](docs/PLUGIN-HOST.md) — the host subsystem: loading/ALC isolation, connector engine, auth broker, sandboxing.
 - [SDK contract](docs/SDK-CONTRACT.md) — the authoritative `Calendar.Plugin.Abstractions` surface (interfaces + DTOs).
 - [Data schema](docs/DATA-SCHEMA.md) — EF Core / SQLite tables, indexes, recurrence & sync metadata.
 - [UI & planning](docs/UI.md) — layout, views, map, travel-time, overlays, performance, a11y.
@@ -53,4 +54,6 @@ mapping) with **no code**.
 - [API contracts](docs/API.md) — the host ⇄ UI REST surface.
 - [Plugin research](docs/PLUGIN-RESEARCH.md) — per-provider capabilities & blockers (current as of 2026-06).
 - [Plugin deep dives](docs/deep-dives/README.md) — end-to-end specs for all 8 first-party plugins.
+- [Testing & CI](docs/TESTING.md) — test pyramid, contract/integration/E2E strategy, guard tests, CI pipeline.
+- [Decision records](docs/adr/README.md) — the 13 load-bearing architecture decisions (ADRs).
 - [Roadmap](docs/ROADMAP.md) — phased delivery, plugin-first and UI-first.

@@ -1,0 +1,37 @@
+# CalDAV plugin (caldav-plugin.md §12). Assembly plugin (WebDAV/XML + Ical.Net), auth app-password/Basic.
+id: org.unifiedcalendar.caldav
+name: CalDAV
+version: 1.0.0
+sdkVersion: "1.x"
+kind: assembly
+assembly: Calendar.Plugin.CalDav.dll
+capabilities:
+  - calendar.read
+  - calendar.write
+publisher:
+  name: Unified Calendar
+auth:
+  scheme: app-password
+network:
+  allow:
+    - "caldav.icloud.com"
+    - "*.caldav.icloud.com"
+    - "caldav.fastmail.com"
+    - "*"
+config:
+  jsonSchema: |
+    {
+      "type": "object",
+      "properties": {
+        "serverUrl": { "type": "string", "title": "Server URL", "description": "e.g. https://caldav.fastmail.com/dav/" },
+        "username":  { "type": "string", "title": "Username / Apple ID" }
+      },
+      "required": ["serverUrl", "username"]
+    }
+  required:
+    - serverUrl
+    - username
+presets:
+  - { name: iCloud,    serverUrl: "https://caldav.icloud.com" }
+  - { name: Fastmail,  serverUrl: "https://caldav.fastmail.com/dav/" }
+  - { name: Nextcloud, serverUrl: "https://<host>/remote.php/dav/" }

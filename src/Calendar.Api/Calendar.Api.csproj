@@ -3,23 +3,44 @@
   <ItemGroup>
     <ProjectReference Include="..\Calendar.Infrastructure\Calendar.Infrastructure.csproj" />
     <ProjectReference Include="..\Calendar.Web\Calendar.Web.csproj" />
-    <!-- Build the ICS plugin but do NOT reference it — it loads at runtime via the collectible ALC. -->
-    <ProjectReference Include="..\..\plugins\Calendar.Plugin.Ics\Calendar.Plugin.Ics.csproj"
-                      ReferenceOutputAssembly="false" Private="false" />
+  </ItemGroup>
+
+  <!--
+    First-party plugin bundles. Each is BUILT but NOT referenced (ReferenceOutputAssembly="false") — they
+    load at runtime via the collectible ALC. The CopyPluginBundles target below copies every bundle listed
+    here into <out>/plugins/<BundleId>, so adding a new first-party plugin is just one more entry: set the
+    %(BundleId) metadata to the output folder name (the directory the host enumerates) and it is copied with
+    no further csproj edits.
+  -->
+  <ItemGroup>
+    <FirstPartyPlugin Include="..\..\plugins\Calendar.Plugin.Ics\Calendar.Plugin.Ics.csproj"
+                      ReferenceOutputAssembly="false" Private="false" BundleId="ics" />
+    <FirstPartyPlugin Include="..\..\plugins\Calendar.Plugin.CalDav\Calendar.Plugin.CalDav.csproj"
+                      ReferenceOutputAssembly="false" Private="false" BundleId="caldav" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="@(FirstPartyPlugin)" />
   </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.Server" Version="9.0.0" />
   </ItemGroup>
 
-  <!-- Copy the built ICS plugin bundle (dll + deps.json + plugin.yaml + Ical.Net.dll) into <out>/plugins/ics. -->
-  <Target Name="CopyIcsPlugin" AfterTargets="Build">
+  <!--
+    Copy every first-party plugin bundle (dll + deps.json + plugin.yaml + its NuGet closure, e.g. Ical.Net)
+    into <out>/plugins/<BundleId>. The SDK contract assembly is excluded — it lives in the host's default ALC
+    and is the shared boundary, so a bundle must not ship its own copy. Generalized from the original
+    ICS-only target so the next provider plugins (Google/Microsoft) need only a FirstPartyPlugin entry.
+  -->
+  <Target Name="CopyPluginBundles" AfterTargets="Build">
     <ItemGroup>
-      <IcsBundle Include="..\..\plugins\Calendar.Plugin.Ics\bin\$(Configuration)\net9.0\**\*"
-                 Exclude="..\..\plugins\Calendar.Plugin.Ics\bin\$(Configuration)\net9.0\Calendar.Plugin.Abstractions.*" />
+      <PluginBundleFile Include="..\..\plugins\%(FirstPartyPlugin.Filename)\bin\$(Configuration)\net9.0\**\*"
+                        Exclude="..\..\plugins\%(FirstPartyPlugin.Filename)\bin\$(Configuration)\net9.0\Calendar.Plugin.Abstractions.*"
+                        BundleId="%(FirstPartyPlugin.BundleId)" />
     </ItemGroup>
-    <Copy SourceFiles="@(IcsBundle)"
-          DestinationFiles="@(IcsBundle->'$(OutDir)plugins\ics\%(RecursiveDir)%(Filename)%(Extension)')"
+    <Copy SourceFiles="@(PluginBundleFile)"
+          DestinationFiles="@(PluginBundleFile->'$(OutDir)plugins\%(BundleId)\%(RecursiveDir)%(Filename)%(Extension)')"
           SkipUnchangedFiles="true" />
   </Target>
 

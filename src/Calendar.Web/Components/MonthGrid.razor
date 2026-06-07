@@ -13,10 +13,21 @@
         @foreach (var cell in Cells)
         {
             var dayEvents = EventsOn(cell.Date);
-            <div class="month-grid__cell @(cell.InMonth ? "" : "month-grid__cell--muted") @(cell.IsToday ? "month-grid__cell--today" : "")"
+            var price = PriceOn(cell.Date);
+            <div class="month-grid__cell @(cell.InMonth ? "" : "month-grid__cell--muted") @(cell.IsToday ? "month-grid__cell--today" : "") @(price is { Cheapest: true } ? "month-grid__cell--cheapest" : "")"
                  role="gridcell"
-                 aria-label="@cell.Date.ToString("D")">
+                 style="@HeatStyle(price)"
+                 aria-label="@CellAria(cell.Date, price)">
                 <span class="month-grid__daynum">@cell.Date.Day</span>
+
+                @if (price is not null)
+                {
+                    <span class="month-grid__price @(price.Cheapest ? "month-grid__price--cheapest" : "") @(price.Stale ? "month-grid__price--stale" : "")"
+                          data-testid="price-label"
+                          title="@PriceTitle(price)">
+                        @price.Label
+                    </span>
+                }
 
                 @if (Compact)
                 {
@@ -71,7 +82,80 @@
     /// </summary>
     [Parameter] public EventCallback<EventDto> OnEventClick { get; set; }
 
+    /// <summary>
+    /// The cheapest flight/stay price per date for the multi-month overlay (travel-fares-plugin.md §10.2,
+    /// UI-WIREFRAMES §3). Each painted cell shows a small price label + a heat tint; the cheapest date in range is
+    /// emphasized. Null/empty ⇒ no overlay (no provider configured) — the grid paints nothing.
+    /// </summary>
+    [Parameter] public IReadOnlyDictionary<DateOnly, OverlayCellDto>? Prices { get; set; }
+
+    /// <summary>The display currency for overlay labels (defaults to USD).</summary>
+    [Parameter] public string Currency { get; set; } = "USD";
+
     private static readonly string[] DayHeaders = { "Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun" };
+
+    // Min/max over the painted prices so a cell can compute its heat tint and "cheapest" emphasis.
+    private decimal _priceMin;
+    private decimal _priceMax;
+
+    protected override void OnParametersSet()
+    {
+        if (Prices is { Count: > 0 })
+        {
+            _priceMin = Prices.Values.Min(c => c.Price);
+            _priceMax = Prices.Values.Max(c => c.Price);
+        }
+        else
+        {
+            _priceMin = _priceMax = 0m;
+        }
+    }
+
+    private PriceView? PriceOn(DateOnly date)
+    {
+        if (Prices is null || !Prices.TryGetValue(date, out var cell))
+            return null;
+        var cheapest = _priceMax > 0m && cell.Price <= _priceMin;
+        return new PriceView(MoneyLabel(cell.Price, Currency), cell.Price, cell.Source, cell.Stale, cheapest);
+    }
+
+    private string? HeatStyle(PriceView? price)
+    {
+        if (price is null || _priceMax <= _priceMin)
+            return null;
+
+        // Normalize cheapest→0..dearest→1; tint cheap = cool/green, dear = warm/red, via a subtle background.
+        var t = (double)((price.Price - _priceMin) / (_priceMax - _priceMin));
+        var hue = 130 - (int)(t * 130); // 130 (green) → 0 (red)
+        return $"--price-heat:hsl({hue} 70% 45%);";
+    }
+
+    private static string CellAria(DateOnly date, PriceView? price)
+    {
+        var label = date.ToString("D");
+        return price is null ? label : $"{label}, from {price.Label}";
+    }
+
+    private static string PriceTitle(PriceView price)
+    {
+        var body = price.Stale ? $"{price.Label} (indicative, last known)" : price.Label;
+        return price.Source is null ? body : $"{body} · {price.Source}";
+    }
+
+    private static string MoneyLabel(decimal amount, string currency)
+    {
+        var symbol = currency switch
+        {
+            "USD" => "$",
+            "EUR" => "€",
+            "GBP" => "£",
+            _ => "",
+        };
+        var rounded = Math.Round(amount, MidpointRounding.AwayFromZero);
+        return symbol.Length > 0 ? $"{symbol}{rounded:0}" : $"{rounded:0} {currency}";
+    }
+
+    private sealed record PriceView(string Label, decimal Price, string? Source, bool Stale, bool Cheapest);
 
     private IReadOnlyList<Cell> Cells => BuildCells(Month);
 

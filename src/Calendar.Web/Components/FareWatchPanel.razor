@@ -1,0 +1,275 @@
+@using Calendar.Web.Services
+@inject CalendarApiClient Api
+
+@* Fare-watch panel (UI-WIREFRAMES §3, travel-fares-plugin.md §10). Lists active watches with their latest
+   low + a tiny sparkline/trend from history, a create-watch form, delete, and a notifications indicator that
+   surfaces fare-drop alerts from GET /api/notifications. Degrades gracefully: with no provider configured the
+   list is simply empty and prices read "—". *@
+
+<section class="fare-panel" data-testid="fare-panel">
+    <header class="fare-panel__head">
+        <h2 class="fare-panel__title">Fare watches</h2>
+        <button class="fare-panel__bell @(_unread > 0 ? "is-active" : "")" data-testid="notifications-indicator"
+                title="@NotificationsTitle" aria-label="@NotificationsTitle"
+                @onclick="ToggleNotifications">
+            🔔
+            @if (_unread > 0)
+            {
+                <span class="fare-panel__badge" data-testid="notifications-count">@_unread</span>
+            }
+        </button>
+    </header>
+
+    @if (_showNotifications)
+    {
+        <ul class="fare-notifications" data-testid="notifications-list">
+            @if (_notifications.Count == 0)
+            {
+                <li class="fare-notifications__empty">No fare alerts yet.</li>
+            }
+            else
+            {
+                @foreach (var n in _notifications.Take(8))
+                {
+                    <li class="fare-notifications__item" data-testid="notification-item">
+                        <span class="fare-notifications__msg">@n.Message</span>
+                        <time class="fare-notifications__time">@n.CreatedAtUtc.LocalDateTime.ToString("g")</time>
+                    </li>
+                }
+            }
+        </ul>
+    }
+
+    @* ── Active watches ── *@
+    @if (_loading)
+    {
+        <p class="fare-panel__empty">Loading watches…</p>
+    }
+    else if (_watches.Count == 0)
+    {
+        <p class="fare-panel__empty" data-testid="fare-watches-empty">No fare watches yet. Add one below.</p>
+    }
+    else
+    {
+        <ul class="fare-watches" data-testid="fare-watches">
+            @foreach (var w in _watches)
+            {
+                <li class="fare-watch" data-testid="fare-watch">
+                    <div class="fare-watch__main">
+                        <span class="fare-watch__route">@RouteLabel(w)</span>
+                        <span class="fare-watch__dates">@w.RangeStart.ToString("d MMM") – @w.RangeEnd.ToString("d MMM")</span>
+                    </div>
+                    <div class="fare-watch__price">
+                        <span class="fare-watch__low" data-testid="fare-watch-price">@LowLabel(w)</span>
+                        @{ var spark = SparkOf(w.Id); }
+                        @if (spark is { Count: > 1 })
+                        {
+                            <svg class="fare-watch__spark @(spark.Down ? "is-down" : spark.Up ? "is-up" : "")"
+                                 data-testid="fare-watch-spark" viewBox="0 0 60 18" preserveAspectRatio="none"
+                                 aria-hidden="true">
+                                <polyline points="@spark.Points" fill="none" stroke="currentColor" stroke-width="1.5" />
+                            </svg>
+                        }
+                    </div>
+                    <button class="btn btn--icon fare-watch__del" data-testid="fare-watch-delete"
+                            title="Delete watch" aria-label="Delete watch" @onclick="() => DeleteAsync(w.Id)">✕</button>
+                </li>
+            }
+        </ul>
+    }
+
+    @* ── Create-watch form ── *@
+    <form class="fare-form" data-testid="fare-create-form" @onsubmit="CreateAsync">
+        <div class="fare-form__kind">
+            <label><input type="radio" name="fare-kind" checked="@(_kind == "Flight")"
+                          @onchange="@(() => _kind = "Flight")" /> Flight</label>
+            <label><input type="radio" name="fare-kind" checked="@(_kind == "Stay")"
+                          @onchange="@(() => _kind = "Stay")" /> Stay</label>
+        </div>
+
+        @if (_kind == "Flight")
+        {
+            <div class="fare-form__row">
+                <input class="fare-form__input" placeholder="From (JFK)" maxlength="3"
+                       data-testid="fare-origin" @bind="_origin" />
+                <input class="fare-form__input" placeholder="To (LHR)" maxlength="3"
+                       data-testid="fare-dest" @bind="_dest" />
+            </div>
+        }
+        else
+        {
+            <div class="fare-form__row">
+                <input class="fare-form__input" placeholder="Lat" data-testid="fare-lat" @bind="_lat" />
+                <input class="fare-form__input" placeholder="Lng" data-testid="fare-lng" @bind="_lng" />
+            </div>
+        }
+
+        <div class="fare-form__row">
+            <input type="date" class="fare-form__input" data-testid="fare-from" @bind="_from" />
+            <input type="date" class="fare-form__input" data-testid="fare-to" @bind="_to" />
+        </div>
+        <div class="fare-form__row">
+            <input type="number" min="1" class="fare-form__input fare-form__input--pax" title="Passengers"
+                   data-testid="fare-pax" @bind="_pax" />
+            <button class="btn fare-form__submit" type="submit" data-testid="fare-create"
+                    disabled="@(_busy || !CanCreate)">@(_busy ? "Adding…" : "+ Watch")</button>
+        </div>
+        @if (_error is not null)
+        {
+            <p class="fare-form__error" data-testid="fare-error">@_error</p>
+        }
+    </form>
+</section>
+
+@code {
+    private IReadOnlyList<FareWatchDto> _watches = Array.Empty<FareWatchDto>();
+    private IReadOnlyList<NotificationDto> _notifications = Array.Empty<NotificationDto>();
+    private readonly Dictionary<Guid, Spark?> _sparks = new();
+
+    private bool _loading = true;
+    private bool _busy;
+    private bool _showNotifications;
+    private int _unread;
+    private string? _error;
+
+    // Create-form state.
+    private string _kind = "Flight";
+    private string _origin = string.Empty;
+    private string _dest = string.Empty;
+    private string _lat = string.Empty;
+    private string _lng = string.Empty;
+    private DateOnly _from = DateOnly.FromDateTime(DateTime.Today).AddDays(14);
+    private DateOnly _to = DateOnly.FromDateTime(DateTime.Today).AddDays(21);
+    private int _pax = 1;
+
+    private bool CanCreate => _kind == "Flight"
+        ? _origin.Trim().Length >= 3 && _dest.Trim().Length >= 3
+        : double.TryParse(_lat, out _) && double.TryParse(_lng, out _);
+
+    private string NotificationsTitle => _unread > 0
+        ? $"{_unread} fare alert(s)"
+        : "No fare alerts";
+
+    protected override async Task OnInitializedAsync() => await ReloadAsync();
+
+    private async Task ReloadAsync()
+    {
+        _loading = true;
+        try
+        {
+            _watches = await Api.GetFareWatchesAsync();
+            _notifications = await Api.GetNotificationsAsync();
+            _unread = _notifications.Count;
+            await LoadSparksAsync();
+        }
+        catch { /* degrade quietly — the panel stays usable without the network */ }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task LoadSparksAsync()
+    {
+        _sparks.Clear();
+        foreach (var w in _watches)
+        {
+            try
+            {
+                var history = await Api.GetFareHistoryAsync(w.Id);
+                _sparks[w.Id] = Spark.From(history);
+            }
+            catch { _sparks[w.Id] = null; }
+        }
+    }
+
+    private Spark? SparkOf(Guid id) => _sparks.TryGetValue(id, out var s) ? s : null;
+
+    private void ToggleNotifications()
+    {
+        _showNotifications = !_showNotifications;
+        if (_showNotifications) _unread = 0; // viewing clears the unread badge.
+    }
+
+    private async Task CreateAsync()
+    {
+        if (!CanCreate) return;
+        _busy = true;
+        _error = null;
+        try
+        {
+            CreateFareWatchBody body = _kind == "Flight"
+                ? new("Flight", _from, _to, _pax, OriginIata: _origin.Trim().ToUpperInvariant(), DestIata: _dest.Trim().ToUpperInvariant())
+                : new("Stay", _from, _to, _pax, Lat: double.Parse(_lat), Lng: double.Parse(_lng), RadiusKm: 5, Rooms: 1);
+
+            var created = await Api.CreateFareWatchAsync(body);
+            if (created is null)
+                _error = "Could not create that watch. Check the inputs.";
+            else
+            {
+                _origin = _dest = _lat = _lng = string.Empty;
+                await ReloadAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task DeleteAsync(Guid id)
+    {
+        if (await Api.DeleteFareWatchAsync(id))
+            await ReloadAsync();
+    }
+
+    private static string RouteLabel(FareWatchDto w) => w.Kind == "Flight"
+        ? $"{w.OriginIata}→{w.DestIata}"
+        : $"Stay @ {w.Lat:0.##},{w.Lng:0.##}";
+
+    private static string LowLabel(FareWatchDto w) => w.LastLowPrice is { } low
+        ? Money(low, w.Currency)
+        : "—";
+
+    private static string Money(decimal amount, string currency)
+    {
+        var symbol = currency switch { "USD" => "$", "EUR" => "€", "GBP" => "£", _ => "" };
+        var rounded = Math.Round(amount, MidpointRounding.AwayFromZero);
+        return symbol.Length > 0 ? $"{symbol}{rounded:0}" : $"{rounded:0} {currency}";
+    }
+
+    /// <summary>
+    /// A tiny sparkline built from a watch's price series (oldest→newest) plus the overall trend.
+    /// <see cref="Points"/> is the SVG polyline string; <see cref="Count"/> is the number of plotted points.
+    /// </summary>
+    private sealed record Spark(string Points, int Count, bool Down, bool Up)
+    {
+        public static Spark? From(IReadOnlyList<FareSampleDto> history)
+        {
+            if (history.Count < 2)
+                return new Spark(string.Empty, history.Count, Down: false, Up: false);
+
+            // History comes newest-first; chart oldest→newest left→right.
+            var series = history.OrderBy(h => h.SampledAtUtc).Select(h => h.Price).ToArray();
+            var min = series.Min();
+            var max = series.Max();
+            var range = max - min == 0 ? 1m : max - min;
+
+            var n = series.Length;
+            var sb = new System.Text.StringBuilder();
+            for (var i = 0; i < n; i++)
+            {
+                var x = (double)i / (n - 1) * 60;
+                var y = 18 - (double)((series[i] - min) / range) * 16 - 1; // padded into 1..17
+                if (i > 0) sb.Append(' ');
+                sb.Append(System.Globalization.CultureInfo.InvariantCulture, $"{x:0.#},{y:0.#}");
+            }
+
+            return new Spark(sb.ToString(), n, Down: series[^1] < series[0], Up: series[^1] > series[0]);
+        }
+    }
+}

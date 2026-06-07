@@ -97,3 +97,81 @@ public sealed record CreateShareBody(
     Guid? CalendarId,
     string Scope,
     DateTimeOffset? ExpiresAtUtc);
+
+// ── Travel fares: multi-month overlay + fare watches + notifications (ARCHITECTURE §14, UI-WIREFRAMES §3) ──
+
+/// <summary>
+/// The multi-month price overlay from <c>GET /api/fares/overlay</c> (travel-fares-plugin.md §10.2): a per-date
+/// cheapest-price map for the visible window. <see cref="Cells"/> is empty when no provider is configured (the
+/// planner then paints nothing — no overlay, no crash).
+/// </summary>
+public sealed record FareOverlayDto(
+    string Kind,
+    string Currency,
+    string? Source,
+    IReadOnlyList<OverlayCellDto> Cells);
+
+/// <summary>One overlay cell: the cheapest price for <see cref="Date"/>, its source, and whether it's a stale last-known.</summary>
+public sealed record OverlayCellDto(
+    DateOnly Date,
+    decimal Price,
+    string? Source,
+    bool Stale);
+
+/// <summary>A fare watch from <c>GET /api/fares/watches</c> (travel-fares-plugin.md §10).</summary>
+public sealed record FareWatchDto(
+    Guid Id,
+    string Kind,
+    DateOnly RangeStart,
+    DateOnly RangeEnd,
+    int Pax,
+    string Currency,
+    decimal? TargetPrice,
+    decimal? LastLowPrice,
+    double DropThreshold,
+    bool IsActive,
+    string? OriginIata,
+    string? DestIata,
+    double? Lat,
+    double? Lng,
+    int? RadiusKm,
+    int? Rooms);
+
+/// <summary>One price-history point for a watch's sparkline (<c>GET /api/fares/watches/{id}/history</c>).</summary>
+public sealed record FareSampleDto(
+    Guid Id,
+    DateTimeOffset SampledAtUtc,
+    decimal Price,
+    string Currency,
+    string Source,
+    bool IsStale);
+
+/// <summary>Request body for <c>POST /api/fares/watches</c>.</summary>
+public sealed record CreateFareWatchBody(
+    string Kind,
+    DateOnly RangeStart,
+    DateOnly RangeEnd,
+    int? Pax = null,
+    string? Currency = null,
+    decimal? TargetPrice = null,
+    double? DropThreshold = null,
+    string? OriginIata = null,
+    string? DestIata = null,
+    double? Lat = null,
+    double? Lng = null,
+    int? RadiusKm = null,
+    int? Rooms = null);
+
+/// <summary>A persisted in-app notification from <c>GET /api/notifications</c> (fare-drop / target-cross).</summary>
+public sealed record NotificationDto(
+    Guid Id,
+    Guid? FareWatchId,
+    string Kind,
+    string Channel,
+    DateTimeOffset CreatedAtUtc,
+    string Message,
+    decimal Price,
+    string Currency,
+    decimal? PreviousPrice,
+    string? Source,
+    bool Delivered);

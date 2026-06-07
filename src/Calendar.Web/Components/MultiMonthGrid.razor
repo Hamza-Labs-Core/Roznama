@@ -1,12 +1,13 @@
 @* Multi-month planner (UI-WIREFRAMES §3): a responsive run of compact month grids starting at Start.
-   Phase 0 renders the empty scaffold; the shared event stream and price/scenario overlays land later. *@
+   Each grid paints the shared event stream and, when a price overlay is supplied, the cheapest flight/stay
+   price per date (travel-fares-plugin.md §10.2). The heat scale spans the whole visible window. *@
 
 <div class="multi-month">
     @foreach (var month in Months)
     {
         <section class="multi-month__card">
             <h3 class="multi-month__title">@month.ToString("MMMM yyyy")</h3>
-            <MonthGrid Month="month" Compact="true" Events="Events" />
+            <MonthGrid Month="month" Compact="true" Events="Events" Prices="Prices" Currency="Currency" />
         </section>
     }
 </div>
@@ -20,6 +21,15 @@
 
     /// <summary>Projected events to paint across the months.</summary>
     [Parameter] public IReadOnlyList<EventDto>? Events { get; set; }
+
+    /// <summary>
+    /// Optional per-date cheapest-price overlay (flight cheapest-date / stay nightly-rate) painted on every month
+    /// (travel-fares-plugin.md §10.2). Null/empty ⇒ no overlay (e.g. no pricing provider configured).
+    /// </summary>
+    [Parameter] public IReadOnlyDictionary<DateOnly, OverlayCellDto>? Prices { get; set; }
+
+    /// <summary>The overlay's display currency for the price labels.</summary>
+    [Parameter] public string Currency { get; set; } = "USD";
 
     private IEnumerable<DateOnly> Months =>
         Enumerable.Range(0, Count).Select(i => Start.AddMonths(i));

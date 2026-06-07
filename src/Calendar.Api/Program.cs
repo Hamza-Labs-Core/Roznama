@@ -268,6 +268,50 @@ api.MapGet("/fares/stays", async (
     });
 });
 
+// ── Multi-month price overlay (travel-fares-plugin.md §10.2, ARCHITECTURE §14). Returns a {date → cheapest
+//    price} map for the visible window of one route (flight) or place (stay), through the interchangeable-pricing
+//    aggregator (cached). An empty map (no provider/no offers) paints nothing — never a crash. ──
+api.MapGet("/fares/overlay", async (
+    string kind, DateOnly from, DateOnly to,
+    string? origin, string? dest, double? lat, double? lng, int? radiusKm, int? nights,
+    int? pax, string? currency, string? market, IFarePricingService fares, CancellationToken ct) =>
+{
+    if (!Enum.TryParse<FareOverlayKind>(kind, ignoreCase: true, out var overlayKind) || !Enum.IsDefined(overlayKind))
+        return Results.BadRequest(new { error = $"unknown kind '{kind}' (expected flight|stay)" });
+    if (to < from)
+        return Results.BadRequest(new { error = "to must be on or after from" });
+
+    // Bound the window so an overlay request can't fan out unboundedly (the planner shows ≤ ~6 months).
+    const int maxDays = 200;
+    if (to.DayNumber - from.DayNumber > maxDays)
+        to = from.AddDays(maxDays);
+
+    if (overlayKind == FareOverlayKind.Flight && (string.IsNullOrWhiteSpace(origin) || string.IsNullOrWhiteSpace(dest)))
+        return Results.BadRequest(new { error = "a flight overlay requires origin and dest (IATA codes)" });
+    if (overlayKind == FareOverlayKind.Stay && (lat is null || lng is null))
+        return Results.BadRequest(new { error = "a stay overlay requires lat and lng" });
+
+    var overlay = await fares.BuildOverlayAsync(new OverlayRequest(
+        overlayKind, from, to, origin, dest, lat, lng, radiusKm ?? 5, nights ?? 1,
+        pax ?? 1, currency, market), ct);
+
+    return Results.Ok(new
+    {
+        kind = overlay.Kind.ToString(),
+        currency = overlay.Currency,
+        source = overlay.Source,
+        cells = overlay.Cells
+            .OrderBy(c => c.Key)
+            .Select(c => new
+            {
+                date = c.Key,
+                price = c.Value.Price,
+                source = c.Value.Source,
+                stale = c.Value.Stale,
+            }),
+    });
+});
+
 // ── Fare watches + price history + notify-on-drop (ARCHITECTURE §14, travel-fares-plugin.md §10) ──
 //    Create/list/delete a watch, poll it through the *.price aggregators (sample + drop/target notify), and
 //    read its price series. Manual poll trigger complements the hosted background sweep.

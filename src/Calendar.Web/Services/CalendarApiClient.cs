@@ -104,6 +104,82 @@ public sealed class CalendarApiClient
         response.EnsureSuccessStatusCode();
     }
 
+    // ── Travel fares: multi-month overlay + watches + notifications (ARCHITECTURE §14, UI-WIREFRAMES §3) ──
+
+    /// <summary>
+    /// The multi-month flight cheapest-date overlay (<c>GET /api/fares/overlay?kind=flight</c>). Returns an overlay
+    /// with an empty cell map when no pricing provider is configured — the planner then paints nothing.
+    /// </summary>
+    public async Task<FareOverlayDto> GetFlightOverlayAsync(
+        string origin, string dest, DateOnly from, DateOnly to, int pax = 1, string? currency = null,
+        CancellationToken ct = default)
+    {
+        var url = $"api/fares/overlay?kind=flight&from={Day(from)}&to={Day(to)}" +
+                  $"&origin={Uri.EscapeDataString(origin)}&dest={Uri.EscapeDataString(dest)}&pax={pax}" +
+                  (currency is null ? "" : $"&currency={Uri.EscapeDataString(currency)}");
+        return await GetOverlayAsync(url, "flight", currency, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>The multi-month stay nightly-rate overlay (<c>GET /api/fares/overlay?kind=stay</c>).</summary>
+    public async Task<FareOverlayDto> GetStayOverlayAsync(
+        double lat, double lng, DateOnly from, DateOnly to, int nights = 1, int pax = 1, string? currency = null,
+        CancellationToken ct = default)
+    {
+        var url = $"api/fares/overlay?kind=stay&from={Day(from)}&to={Day(to)}" +
+                  $"&lat={Num(lat)}&lng={Num(lng)}&nights={nights}&pax={pax}" +
+                  (currency is null ? "" : $"&currency={Uri.EscapeDataString(currency)}");
+        return await GetOverlayAsync(url, "stay", currency, ct).ConfigureAwait(false);
+    }
+
+    private async Task<FareOverlayDto> GetOverlayAsync(string url, string kind, string? currency, CancellationToken ct)
+    {
+        try
+        {
+            return await _http.GetFromJsonAsync<FareOverlayDto>(url, ct).ConfigureAwait(false)
+                ?? Empty(kind, currency);
+        }
+        catch (HttpRequestException)
+        {
+            // Pricing degrades gracefully: a transient overlay failure paints nothing rather than breaking the grid.
+            return Empty(kind, currency);
+        }
+
+        static FareOverlayDto Empty(string kind, string? currency) =>
+            new(kind, currency ?? "USD", null, Array.Empty<OverlayCellDto>());
+    }
+
+    /// <summary>List active fare watches with their latest low (<c>GET /api/fares/watches</c>).</summary>
+    public async Task<IReadOnlyList<FareWatchDto>> GetFareWatchesAsync(CancellationToken ct = default) =>
+        await _http.GetFromJsonAsync<List<FareWatchDto>>("api/fares/watches", ct) ?? new List<FareWatchDto>();
+
+    /// <summary>A watch's price series for its sparkline (<c>GET /api/fares/watches/{id}/history</c>).</summary>
+    public async Task<IReadOnlyList<FareSampleDto>> GetFareHistoryAsync(Guid id, CancellationToken ct = default) =>
+        await _http.GetFromJsonAsync<List<FareSampleDto>>($"api/fares/watches/{id}/history", ct) ?? new List<FareSampleDto>();
+
+    /// <summary>Create a fare watch (<c>POST /api/fares/watches</c>).</summary>
+    public async Task<FareWatchDto?> CreateFareWatchAsync(CreateFareWatchBody body, CancellationToken ct = default)
+    {
+        var response = await _http.PostAsJsonAsync("api/fares/watches", body, ct);
+        if (!response.IsSuccessStatusCode)
+            return null;
+        return await response.Content.ReadFromJsonAsync<FareWatchDto>(ct);
+    }
+
+    /// <summary>Delete a fare watch (<c>DELETE /api/fares/watches/{id}</c>).</summary>
+    public async Task<bool> DeleteFareWatchAsync(Guid id, CancellationToken ct = default)
+    {
+        var response = await _http.DeleteAsync($"api/fares/watches/{id}", ct);
+        return response.IsSuccessStatusCode;
+    }
+
+    /// <summary>The in-app notification log, newest-first (<c>GET /api/notifications</c>) — fare-drop/target alerts.</summary>
+    public async Task<IReadOnlyList<NotificationDto>> GetNotificationsAsync(int limit = 50, CancellationToken ct = default) =>
+        await _http.GetFromJsonAsync<List<NotificationDto>>($"api/notifications?limit={limit}", ct) ?? new List<NotificationDto>();
+
+    private static string Day(DateOnly value) => value.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+
+    private static string Num(double value) => value.ToString("R", CultureInfo.InvariantCulture);
+
     private static string Iso(DateTimeOffset value) =>
         Uri.EscapeDataString(value.ToUniversalTime().ToString("o", CultureInfo.InvariantCulture));
 }

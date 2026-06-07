@@ -43,6 +43,18 @@ public interface ICalendarSyncService
 public interface IEventProjectionService
 {
     Task<IReadOnlyList<ProjectedEvent>> GetEventsAsync(DateTimeOffset fromUtc, DateTimeOffset toUtc, CancellationToken ct);
+
+    /// <summary>
+    /// Projects events for a share (ARCHITECTURE §16): restricted to the given calendars (regardless of the
+    /// owner's UI visibility toggle — a hidden calendar can still be published), optionally narrowed to events
+    /// carrying one of <paramref name="categoryIds"/>. Recurrence/override/dedup handling matches the main feed.
+    /// </summary>
+    Task<IReadOnlyList<ProjectedEvent>> GetEventsForShareAsync(
+        IReadOnlyCollection<Guid> calendarIds,
+        IReadOnlyCollection<Guid> categoryIds,
+        DateTimeOffset fromUtc,
+        DateTimeOffset toUtc,
+        CancellationToken ct);
 }
 
 /// <summary>Connects and lists accounts. ICS connect needs no OAuth — just a feed URL.</summary>

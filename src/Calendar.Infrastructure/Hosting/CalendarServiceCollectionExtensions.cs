@@ -33,6 +33,7 @@ public static class CalendarServiceCollectionExtensions
         services.AddScoped<IMapStyleService, MapStyleService>();
         services.AddScoped<IAccountService, AccountService>();
         services.AddScoped<ICalendarCatalog, CalendarCatalog>();
+        services.AddScoped<IShareService, ShareService>();
 
         return services;
     }

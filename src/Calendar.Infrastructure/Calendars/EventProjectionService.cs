@@ -25,6 +25,33 @@ public sealed class EventProjectionService : IEventProjectionService
         var calendars = await _db.Calendars
             .Where(c => c.IsVisible)
             .ToDictionaryAsync(c => c.Id, c => c, ct).ConfigureAwait(false);
+
+        return await ProjectAsync(calendars, categoryFilter: null, fromUtc, toUtc, ct).ConfigureAwait(false);
+    }
+
+    public async Task<IReadOnlyList<ProjectedEvent>> GetEventsForShareAsync(
+        IReadOnlyCollection<Guid> calendarIds, IReadOnlyCollection<Guid> categoryIds,
+        DateTimeOffset fromUtc, DateTimeOffset toUtc, CancellationToken ct)
+    {
+        if (calendarIds.Count == 0)
+            return Array.Empty<ProjectedEvent>();
+
+        // A share publishes an explicit calendar set regardless of the owner's UI visibility toggle (a hidden
+        // calendar can still be shared), so we do NOT filter on IsVisible here (ARCHITECTURE §16).
+        var idSet = calendarIds.ToHashSet();
+        var calendars = await _db.Calendars
+            .Where(c => idSet.Contains(c.Id))
+            .ToDictionaryAsync(c => c.Id, c => c, ct).ConfigureAwait(false);
+
+        var categoryFilter = categoryIds.Count > 0 ? categoryIds.ToHashSet() : null;
+        return await ProjectAsync(calendars, categoryFilter, fromUtc, toUtc, ct).ConfigureAwait(false);
+    }
+
+    private async Task<IReadOnlyList<ProjectedEvent>> ProjectAsync(
+        IReadOnlyDictionary<Guid, Domain.Entities.Calendar> calendars,
+        IReadOnlySet<Guid>? categoryFilter,
+        DateTimeOffset fromUtc, DateTimeOffset toUtc, CancellationToken ct)
+    {
         if (calendars.Count == 0)
             return Array.Empty<ProjectedEvent>();
 
@@ -37,6 +64,20 @@ public sealed class EventProjectionService : IEventProjectionService
             .Where(e => calendarIds.Contains(e.CalendarId) &&
                         (e.Rrule != null || (e.StartUtc < toUtc && e.EndUtc >= fromUtc)))
             .ToListAsync(ct).ConfigureAwait(false);
+
+        // Union-share category narrowing: keep only events tagged with one of the requested categories.
+        // Override rows are matched by their master's categories so an exception isn't silently dropped.
+        if (categoryFilter is not null)
+        {
+            var allowedMasters = events
+                .Where(e => e.Categories.Any(c => categoryFilter.Contains(c.Id)))
+                .Select(e => e.Id)
+                .ToHashSet();
+            events = events
+                .Where(e => e.Categories.Any(c => categoryFilter.Contains(c.Id))
+                            || (e.MasterId is { } m && allowedMasters.Contains(m)))
+                .ToList();
+        }
 
         // Duplicate-group canonical map + member counts.
         var groups = await _db.DuplicateGroups

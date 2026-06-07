@@ -50,6 +50,60 @@ public sealed class CalendarApiClient
     public Task SetCategoryVisibilityAsync(Guid id, bool isVisible, CancellationToken ct = default) =>
         _http.PatchAsJsonAsync($"api/categories/{id}", new { isVisible }, ct);
 
+    // ── Event write-back (ARCHITECTURE §8/§10). Gated server-side behind calendar.write; a write to a
+    //    read-only calendar returns 409. The host either applies the write to the bound plugin or, offline,
+    //    queues it in the outbox (Disposition=Queued). ──
+
+    /// <summary>Create an event on a writable calendar (<c>POST /api/events</c>).</summary>
+    public async Task<EventWriteResultDto> CreateEventAsync(EventWriteBody body, CancellationToken ct = default)
+    {
+        var response = await _http.PostAsJsonAsync("api/events", body, ct);
+        response.EnsureSuccessStatusCode();
+        return (await response.Content.ReadFromJsonAsync<EventWriteResultDto>(ct))!;
+    }
+
+    /// <summary>Edit an existing event (<c>PATCH /api/events/{id}</c>). The calendar cannot change here.</summary>
+    public async Task<EventWriteResultDto> UpdateEventAsync(Guid id, EventWriteBody body, CancellationToken ct = default)
+    {
+        var response = await _http.PatchAsJsonAsync($"api/events/{id}", body, ct);
+        response.EnsureSuccessStatusCode();
+        return (await response.Content.ReadFromJsonAsync<EventWriteResultDto>(ct))!;
+    }
+
+    /// <summary>Delete an event (<c>DELETE /api/events/{id}</c>).</summary>
+    public async Task<EventWriteResultDto> DeleteEventAsync(Guid id, CancellationToken ct = default)
+    {
+        var response = await _http.DeleteAsync($"api/events/{id}", ct);
+        response.EnsureSuccessStatusCode();
+        return (await response.Content.ReadFromJsonAsync<EventWriteResultDto>(ct))!;
+    }
+
+    /// <summary>Queued-writes summary for the "↻ (N)" footer indicator (<c>GET /api/sync/outbox</c>, §8).</summary>
+    public async Task<OutboxStatusDto> GetOutboxStatusAsync(CancellationToken ct = default) =>
+        await _http.GetFromJsonAsync<OutboxStatusDto>("api/sync/outbox", ct)
+            ?? new OutboxStatusDto(0, 0, null);
+
+    // ── Sharing (ARCHITECTURE §16). Owner-facing management; the public feed lives at /share/{token}.ics. ──
+
+    /// <summary>List the owner's active shares (<c>GET /api/shares</c>).</summary>
+    public async Task<IReadOnlyList<ShareDto>> GetSharesAsync(CancellationToken ct = default) =>
+        await _http.GetFromJsonAsync<List<ShareDto>>("api/shares", ct) ?? new List<ShareDto>();
+
+    /// <summary>Create a tokenized share link (<c>POST /api/shares</c>); returns the public feed URL + token.</summary>
+    public async Task<ShareDto> CreateShareAsync(CreateShareBody body, CancellationToken ct = default)
+    {
+        var response = await _http.PostAsJsonAsync("api/shares", body, ct);
+        response.EnsureSuccessStatusCode();
+        return (await response.Content.ReadFromJsonAsync<ShareDto>(ct))!;
+    }
+
+    /// <summary>Revoke a share (<c>DELETE /api/shares/{id}</c>); the public feed 404s afterwards.</summary>
+    public async Task RevokeShareAsync(Guid id, CancellationToken ct = default)
+    {
+        var response = await _http.DeleteAsync($"api/shares/{id}", ct);
+        response.EnsureSuccessStatusCode();
+    }
+
     private static string Iso(DateTimeOffset value) =>
         Uri.EscapeDataString(value.ToUniversalTime().ToString("o", CultureInfo.InvariantCulture));
 }

@@ -67,6 +67,44 @@ public class MonthGridTests : TestContext
     }
 
     [Fact]
+    public void Chip_click_raises_OnEventClick_with_the_event()
+    {
+        var ev = new EventDto(Guid.NewGuid(), Guid.NewGuid(), "Work", null, "Standup",
+            new DateTimeOffset(2026, 6, 10, 9, 0, 0, TimeSpan.Zero),
+            new DateTimeOffset(2026, 6, 10, 9, 30, 0, TimeSpan.Zero),
+            AllDay: false, Location: "Berlin", IsRecurringInstance: false, MasterId: null,
+            DuplicateCount: 0, Categories: new[] { "Work" });
+
+        EventDto? clicked = null;
+        var cut = RenderComponent<MonthGrid>(p => p
+            .Add(x => x.Month, new DateOnly(2026, 6, 1))
+            .Add(x => x.Events, new List<EventDto> { ev })
+            .Add(x => x.OnEventClick, e => clicked = e));
+
+        var chip = cut.Find(".chip--clickable");
+        chip.Click();
+
+        Assert.NotNull(clicked);
+        Assert.Equal(ev.Id, clicked!.Id);
+    }
+
+    [Fact]
+    public void Chips_are_inert_when_no_click_handler_is_bound()
+    {
+        var ev = new EventDto(Guid.NewGuid(), Guid.NewGuid(), "Work", null, "Standup",
+            new DateTimeOffset(2026, 6, 10, 9, 0, 0, TimeSpan.Zero),
+            new DateTimeOffset(2026, 6, 10, 9, 30, 0, TimeSpan.Zero),
+            AllDay: false, Location: null, IsRecurringInstance: false, MasterId: null,
+            DuplicateCount: 0, Categories: Array.Empty<string>());
+
+        var cut = RenderComponent<MonthGrid>(p => p
+            .Add(x => x.Month, new DateOnly(2026, 6, 1))
+            .Add(x => x.Events, new List<EventDto> { ev }));
+
+        Assert.Empty(cut.FindAll(".chip--clickable"));
+    }
+
+    [Fact]
     public void Shows_a_duplicate_badge_when_duplicate_count_is_positive()
     {
         var events = new List<EventDto>

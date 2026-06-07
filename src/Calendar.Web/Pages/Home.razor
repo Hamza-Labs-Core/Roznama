@@ -1,4 +1,5 @@
 @page "/"
+@using Calendar.Web.Components
 @inject CalendarApiClient Api
 
 <PageTitle>Unified Calendar</PageTitle>
@@ -51,13 +52,15 @@
                 <ul class="sidebar-list">
                     @foreach (var cal in _calendars)
                     {
-                        <li class="sidebar-list__item">
+                        <li class="sidebar-list__item sidebar-list__item--cal">
                             <label>
                                 <input type="checkbox" checked="@cal.IsVisible"
                                        @onchange="e => ToggleCalendarAsync(cal, (bool)e.Value!)" />
                                 <span class="swatch" style="background:@SwatchColor(cal)"></span>
                                 @cal.Name
                             </label>
+                            <button class="btn btn--icon btn--share" title="Share @cal.Name"
+                                    aria-label="Share @cal.Name" @onclick="() => OpenShare(cal)">🔗</button>
                         </li>
                     }
                 </ul>
@@ -80,7 +83,9 @@
             </ul>
         </section>
 
-        <footer class="shell__status">⛅ offline · ↻ (0)</footer>
+        <footer class="shell__status" data-testid="status-footer">
+            ⛅ offline · <span data-testid="outbox-indicator">↻ (@_outbox.Pending)</span>
+        </footer>
     </aside>
 
     @* ── View canvas ── *@
@@ -106,7 +111,11 @@
 
             <div class="toolbar__actions">
                 <ThemeToggle />
-                <button class="btn" disabled>+ New</button>
+                <button class="btn" data-testid="new-event" @onclick="OpenNewEvent"
+                        disabled="@(!HasWritableCalendar)"
+                        title="@(HasWritableCalendar ? "New event" : "Connect a writable calendar to create events")">
+                    + New
+                </button>
             </div>
         </header>
 
@@ -114,7 +123,7 @@
             @switch (_view)
             {
                 case CalendarView.Month:
-                    <MonthGrid Month="_month" Events="_events" />
+                    <MonthGrid Month="_month" Events="_events" OnEventClick="OpenEditEvent" />
                     break;
                 case CalendarView.MultiMonth:
                     <MultiMonthGrid Start="_month" Count="6" Events="_events" />
@@ -144,6 +153,17 @@
         <p class="inspector__empty">Select an event, trip, or place to see details, travel time, and prices here.</p>
     </aside>
 
+    @* ── Modals: event editor (create/edit) + share dialog (UI-WIREFRAMES §7) ── *@
+    @if (_editorOpen)
+    {
+        <EventEditor Event="_editing" Calendars="_calendars" DefaultDate="_month"
+                     OnSaved="OnEventSavedAsync" OnClose="CloseEditor" />
+    }
+    @if (_sharing is not null)
+    {
+        <ShareDialog Calendar="_sharing" OnClose="CloseShare" />
+    }
+
 </div>
 
 @code {
@@ -159,6 +179,15 @@
     private bool _busy;
     private string? _error;
 
+    private OutboxStatusDto _outbox = new(0, 0, null);
+
+    // Editor + share modal state (UI-WIREFRAMES §7).
+    private bool _editorOpen;
+    private EventDto? _editing;       // null while open ⇒ create mode.
+    private CalendarDto? _sharing;
+
+    private bool HasWritableCalendar => _calendars.Any(c => !c.IsReadOnly);
+
     protected override async Task OnInitializedAsync() => await ReloadAllAsync();
 
     private async Task ReloadAllAsync()
@@ -167,7 +196,45 @@
         _calendars = await Api.GetCalendarsAsync();
         _categories = await Api.GetCategoriesAsync();
         await ReloadEventsAsync();
+        await ReloadOutboxAsync();
     }
+
+    private async Task ReloadOutboxAsync()
+    {
+        try { _outbox = await Api.GetOutboxStatusAsync(); }
+        catch { /* keep the last-known count if the status call fails */ }
+    }
+
+    // ── Event editor ──
+    private void OpenNewEvent()
+    {
+        if (!HasWritableCalendar) return;
+        _editing = null;
+        _editorOpen = true;
+    }
+
+    private void OpenEditEvent(EventDto ev)
+    {
+        _editing = ev;
+        _editorOpen = true;
+    }
+
+    private void CloseEditor()
+    {
+        _editorOpen = false;
+        _editing = null;
+    }
+
+    private async Task OnEventSavedAsync()
+    {
+        CloseEditor();
+        await ReloadEventsAsync();
+        await ReloadOutboxAsync();
+    }
+
+    // ── Sharing ──
+    private void OpenShare(CalendarDto cal) => _sharing = cal;
+    private void CloseShare() => _sharing = null;
 
     private async Task ReloadEventsAsync()
     {

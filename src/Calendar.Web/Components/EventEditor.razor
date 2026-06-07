@@ -1,0 +1,234 @@
+@using Calendar.Web.Services
+@inject CalendarApiClient Api
+
+@*
+    Event editor (UI-WIREFRAMES §1/§7). A draft editor for create + edit, surfaced as a modal.
+    Write affordances appear ONLY for writable calendars: the calendar picker is limited to
+    calendars where IsReadOnly is false (ARCHITECTURE.md §8 write queue). On create the picker is
+    shown; on edit the calendar is fixed (a write can't change the owning provider). After a
+    successful write the parent refreshes the event stream + the outbox count.
+*@
+
+<div class="modal-backdrop" data-testid="event-editor" @onclick="Cancel">
+    <div class="modal modal--editor" @onclick:stopPropagation="true" role="dialog" aria-modal="true"
+         aria-label="@(IsEdit ? "Edit event" : "New event")">
+        <header class="modal__head">
+            <h2 class="modal__title">@(IsEdit ? "Edit event" : "New event")</h2>
+            <button class="btn btn--icon" aria-label="Close" @onclick="Cancel">✕</button>
+        </header>
+
+        @if (!HasWritableCalendar)
+        {
+            <div class="modal__body">
+                <p class="editor__notice" data-testid="editor-no-writable">
+                    None of your calendars are writable. Connect a CalDAV, Google, or Microsoft account
+                    to create and edit events. Read-only feeds (ICS, Holidays) can't be edited.
+                </p>
+            </div>
+            <footer class="modal__foot">
+                <button class="btn" @onclick="Cancel">Close</button>
+            </footer>
+        }
+        else
+        {
+            <div class="modal__body">
+                <label class="field">
+                    <span class="field__label">Title</span>
+                    <input class="field__input" data-testid="editor-title" @bind="_title" @bind:event="oninput"
+                           placeholder="Event title" disabled="@_busy" />
+                </label>
+
+                @if (IsEdit)
+                {
+                    <div class="field">
+                        <span class="field__label">Calendar</span>
+                        <div class="field__static" data-testid="editor-calendar-fixed">
+                            <span class="swatch" style="background:@SwatchFor(_calendarId)"></span>
+                            @CalendarName(_calendarId)
+                        </div>
+                    </div>
+                }
+                else
+                {
+                    <label class="field">
+                        <span class="field__label">Calendar</span>
+                        <select class="field__input" data-testid="editor-calendar" @bind="_calendarId" disabled="@_busy">
+                            @foreach (var cal in WritableCalendars)
+                            {
+                                <option value="@cal.Id">@cal.Name</option>
+                            }
+                        </select>
+                    </label>
+                }
+
+                <label class="field field--check">
+                    <input type="checkbox" data-testid="editor-allday" @bind="_allDay" disabled="@_busy" />
+                    <span>All day</span>
+                </label>
+
+                <div class="field-row">
+                    <label class="field">
+                        <span class="field__label">Start</span>
+                        <input class="field__input" type="@(_allDay ? "date" : "datetime-local")"
+                               data-testid="editor-start" @bind="_start" disabled="@_busy" />
+                    </label>
+                    <label class="field">
+                        <span class="field__label">End</span>
+                        <input class="field__input" type="@(_allDay ? "date" : "datetime-local")"
+                               data-testid="editor-end" @bind="_end" disabled="@_busy" />
+                    </label>
+                </div>
+
+                <label class="field">
+                    <span class="field__label">Location</span>
+                    <input class="field__input" data-testid="editor-location" @bind="_location" @bind:event="oninput"
+                           placeholder="Optional" disabled="@_busy" />
+                </label>
+
+                @if (_error is not null)
+                {
+                    <p class="editor__error" data-testid="editor-error">@_error</p>
+                }
+            </div>
+
+            <footer class="modal__foot">
+                @if (IsEdit)
+                {
+                    <button class="btn btn--danger" data-testid="editor-delete" @onclick="DeleteAsync"
+                            disabled="@_busy">Delete</button>
+                }
+                <span class="modal__foot-spacer"></span>
+                <button class="btn" @onclick="Cancel" disabled="@_busy">Cancel</button>
+                <button class="btn btn--primary" data-testid="editor-save" @onclick="SaveAsync"
+                        disabled="@(_busy || string.IsNullOrWhiteSpace(_title))">
+                    @(_busy ? "Saving…" : IsEdit ? "Save" : "Create")
+                </button>
+            </footer>
+        }
+    </div>
+</div>
+
+@code {
+    /// <summary>The event being edited; <c>null</c> means a new-event draft (create mode).</summary>
+    [Parameter] public EventDto? Event { get; set; }
+
+    /// <summary>All calendars; the picker is filtered to the writable ones (IsReadOnly == false).</summary>
+    [Parameter] public IReadOnlyList<CalendarDto> Calendars { get; set; } = Array.Empty<CalendarDto>();
+
+    /// <summary>The day the user picked when hitting "+ New" (defaults the start/end). Ignored on edit.</summary>
+    [Parameter] public DateOnly? DefaultDate { get; set; }
+
+    /// <summary>Raised after a successful create/edit/delete so the parent can refresh events + outbox.</summary>
+    [Parameter] public EventCallback OnSaved { get; set; }
+
+    /// <summary>Raised when the editor is dismissed without writing.</summary>
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    private string _title = string.Empty;
+    private Guid _calendarId;
+    private bool _allDay;
+    private DateTime _start;
+    private DateTime _end;
+    private string _location = string.Empty;
+    private bool _busy;
+    private string? _error;
+
+    private bool IsEdit => Event is not null;
+    private IReadOnlyList<CalendarDto> WritableCalendars =>
+        Calendars.Where(c => !c.IsReadOnly).ToList();
+    private bool HasWritableCalendar => WritableCalendars.Count > 0;
+
+    protected override void OnParametersSet()
+    {
+        if (IsEdit)
+        {
+            _title = Event!.Title;
+            _calendarId = Event.CalendarId;
+            _allDay = Event.AllDay;
+            _start = Event.StartUtc.LocalDateTime;
+            _end = Event.EndUtc.LocalDateTime;
+            _location = Event.Location ?? string.Empty;
+        }
+        else
+        {
+            _title = string.Empty;
+            _calendarId = WritableCalendars.FirstOrDefault()?.Id ?? Guid.Empty;
+            _allDay = false;
+            var day = (DefaultDate ?? DateOnly.FromDateTime(DateTime.Today)).ToDateTime(new TimeOnly(9, 0));
+            _start = day;
+            _end = day.AddHours(1);
+            _location = string.Empty;
+        }
+    }
+
+    private async Task SaveAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_title) || _calendarId == Guid.Empty) return;
+        _busy = true;
+        _error = null;
+        try
+        {
+            var body = new EventWriteBody(
+                _calendarId, _title.Trim(),
+                new DateTimeOffset(_start, TimeZoneInfo.Local.GetUtcOffset(_start)).ToUniversalTime(),
+                new DateTimeOffset(_end, TimeZoneInfo.Local.GetUtcOffset(_end)).ToUniversalTime(),
+                _allDay, string.IsNullOrWhiteSpace(_location) ? null : _location.Trim(),
+                Rrule: null, Categories: null);
+
+            if (IsEdit)
+                await Api.UpdateEventAsync(Event!.Id, body);
+            else
+                await Api.CreateEventAsync(body);
+
+            await OnSaved.InvokeAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = FriendlyError(ex);
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task DeleteAsync()
+    {
+        if (!IsEdit) return;
+        _busy = true;
+        _error = null;
+        try
+        {
+            await Api.DeleteEventAsync(Event!.Id);
+            await OnSaved.InvokeAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = FriendlyError(ex);
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private Task Cancel() => OnClose.InvokeAsync();
+
+    private string CalendarName(Guid id) =>
+        Calendars.FirstOrDefault(c => c.Id == id)?.Name ?? "Calendar";
+
+    private string SwatchFor(Guid id)
+    {
+        var cal = Calendars.FirstOrDefault(c => c.Id == id);
+        if (cal is not null && !string.IsNullOrWhiteSpace(cal.Color)) return cal.Color!;
+        var hue = (uint)id.GetHashCode() % 360;
+        return $"hsl({hue} 60% 45%)";
+    }
+
+    private static string FriendlyError(Exception ex) => ex switch
+    {
+        HttpRequestException { StatusCode: System.Net.HttpStatusCode.Conflict } =>
+            "That calendar is read-only or the event changed on the server. Refresh and try again.",
+        _ => "Could not save the event. Please try again.",
+    };
+}

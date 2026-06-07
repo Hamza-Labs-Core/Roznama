@@ -34,7 +34,10 @@
                 {
                     @foreach (var ev in dayEvents.Take(3))
                     {
-                        <div class="chip" style="border-left-color:@Color(ev)" title="@ChipTitle(ev)">
+                        <div class="chip @(OnEventClick.HasDelegate ? "chip--clickable" : "")"
+                             style="border-left-color:@Color(ev)" title="@ChipTitle(ev)"
+                             role="@(OnEventClick.HasDelegate ? "button" : null)"
+                             @onclick="() => OnEventClick.InvokeAsync(ev)">
                             <span class="chip__title">@ev.Title</span>
                             @if (ev.DuplicateCount > 0)
                             {
@@ -61,6 +64,12 @@
 
     /// <summary>Projected events to paint over the grid (already filtered/deduped by the host).</summary>
     [Parameter] public IReadOnlyList<EventDto>? Events { get; set; }
+
+    /// <summary>
+    /// Raised when an event chip is clicked, opening it in the editor/inspector (UI-WIREFRAMES §2/§7).
+    /// When no handler is bound the chips are inert (e.g. the compact multi-month planner).
+    /// </summary>
+    [Parameter] public EventCallback<EventDto> OnEventClick { get; set; }
 
     private static readonly string[] DayHeaders = { "Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun" };
 

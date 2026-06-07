@@ -88,6 +88,76 @@ api.MapPatch("/categories/{id:guid}", async (Guid id, VisibilityPatch patch, ICa
 api.MapGet("/events", async (DateTimeOffset from, DateTimeOffset to, IEventProjectionService projection, CancellationToken ct) =>
     Results.Ok(await projection.GetEventsAsync(from, to, ct)));
 
+// ── Event write-back (ARCHITECTURE §8/§10; SDK-CONTRACT §4.write). calendar.write only; read-only → 409.
+//    A write reflects locally (UI updates) and pushes to the bound plugin, or queues offline. ──
+api.MapPost("/events", async (CreateEventBody body, IWriteService writes, CancellationToken ct) =>
+{
+    if (body.CalendarId == Guid.Empty)
+        return Results.BadRequest(new { error = "calendarId is required" });
+    try
+    {
+        var result = await writes.CreateEventAsync(body.CalendarId, body.ToRequest(), ct);
+        return Results.Created($"/api/events/{result.EventId}", ToWriteResponse(result));
+    }
+    catch (ReadOnlyCalendarException ex)
+    {
+        return Results.Problem(title: "Calendar is read-only", detail: ex.Message, statusCode: StatusCodes.Status409Conflict);
+    }
+    catch (InvalidOperationException ex)
+    {
+        return Results.Problem(title: "Could not create event", detail: ex.Message, statusCode: StatusCodes.Status404NotFound);
+    }
+});
+
+api.MapPatch("/events/{id:guid}", async (Guid id, UpdateEventBody body, IWriteService writes, CancellationToken ct) =>
+{
+    try
+    {
+        var result = await writes.UpdateEventAsync(id, body.ToRequest(), ct);
+        return Results.Ok(ToWriteResponse(result));
+    }
+    catch (ConcurrencyConflictException ex)
+    {
+        return Results.Problem(title: "Write conflict", detail: ex.Message, statusCode: StatusCodes.Status409Conflict);
+    }
+    catch (ReadOnlyCalendarException ex)
+    {
+        return Results.Problem(title: "Calendar is read-only", detail: ex.Message, statusCode: StatusCodes.Status409Conflict);
+    }
+    catch (InvalidOperationException ex)
+    {
+        return Results.Problem(title: "Could not update event", detail: ex.Message, statusCode: StatusCodes.Status404NotFound);
+    }
+});
+
+api.MapDelete("/events/{id:guid}", async (Guid id, IWriteService writes, CancellationToken ct) =>
+{
+    try
+    {
+        var result = await writes.DeleteEventAsync(id, ct);
+        return Results.Ok(ToWriteResponse(result));
+    }
+    catch (ConcurrencyConflictException ex)
+    {
+        return Results.Problem(title: "Write conflict", detail: ex.Message, statusCode: StatusCodes.Status409Conflict);
+    }
+    catch (ReadOnlyCalendarException ex)
+    {
+        return Results.Problem(title: "Calendar is read-only", detail: ex.Message, statusCode: StatusCodes.Status409Conflict);
+    }
+    catch (InvalidOperationException ex)
+    {
+        return Results.Problem(title: "Could not delete event", detail: ex.Message, statusCode: StatusCodes.Status404NotFound);
+    }
+});
+
+// ── Offline write queue (ARCHITECTURE §8). Queued count/status + an explicit replay trigger. ──
+api.MapGet("/sync/outbox", async (IWriteService writes, CancellationToken ct) =>
+    Results.Ok(await writes.GetOutboxStatusAsync(ct)));
+
+api.MapPost("/sync/outbox/replay", async (IWriteService writes, CancellationToken ct) =>
+    Results.Ok(await writes.ReplayAsync(ct)));
+
 // ── Map (ARCHITECTURE §7): events with a resolved place (pins) + the place catalog ──
 api.MapGet("/map/events", async (DateTimeOffset from, DateTimeOffset to, IMapViewService map, CancellationToken ct) =>
     Results.Ok(await map.GetMapEventsAsync(from, to, ct)));
@@ -256,8 +326,34 @@ static bool TryParseMode(string? mode, out TravelMode travelMode)
     return Enum.TryParse(mode, ignoreCase: true, out travelMode) && Enum.IsDefined(travelMode);
 }
 
+// Map a write outcome to the wire shape so the UI can reflect Applied vs Queued (ARCHITECTURE §8).
+static object ToWriteResponse(EventWriteResult result) => new
+{
+    id = result.EventId,
+    calendarId = result.CalendarId,
+    disposition = result.Disposition.ToString(),
+    queued = result.Disposition == WriteDisposition.Queued,
+    outboxId = result.OutboxId,
+};
+
 internal record ConnectIcsRequest(string FeedUrl, string? Name, int? RefreshMinutes, string? ForceCategory);
 internal record VisibilityPatch(bool IsVisible);
+
+internal record CreateEventBody(
+    Guid CalendarId, string Title, DateTimeOffset StartUtc, DateTimeOffset EndUtc,
+    bool AllDay, string? Location, string? Rrule, string[]? Categories)
+{
+    public EventWriteRequest ToRequest() =>
+        new(Title, StartUtc, EndUtc, AllDay, Location, Rrule, Categories);
+}
+
+internal record UpdateEventBody(
+    string Title, DateTimeOffset StartUtc, DateTimeOffset EndUtc,
+    bool AllDay, string? Location, string? Rrule, string[]? Categories)
+{
+    public EventWriteRequest ToRequest() =>
+        new(Title, StartUtc, EndUtc, AllDay, Location, Rrule, Categories);
+}
 internal record CreateShareBody(Guid? CalendarId, ShareFilterBody? Filter, string? Scope, DateTimeOffset? ExpiresAtUtc);
 internal record ShareFilterBody(Guid[]? Calendars, Guid[]? Categories);
 

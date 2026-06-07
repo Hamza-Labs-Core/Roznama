@@ -25,7 +25,9 @@ public static class CalendarServiceCollectionExtensions
         services.AddScoped<DeviceProvider>();
         services.AddScoped<DedupGrouper>();
         services.AddScoped<ISecretVault, SecretVault>();
+        services.AddScoped<PluginHostServicesFactory>();
         services.AddScoped<ICalendarSyncService, CalendarSyncService>();
+        services.AddScoped<IWriteService, WriteService>();
         services.AddScoped<IEventProjectionService, EventProjectionService>();
         services.AddScoped<IGeocodeService, GeocodeService>();
         services.AddScoped<IRouteService, RouteService>();

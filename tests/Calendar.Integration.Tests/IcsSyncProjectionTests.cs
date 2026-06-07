@@ -169,7 +169,9 @@ public sealed class IcsSyncProjectionTests : IDisposable
         var geocode = new GeocodeService(
             db, geocodeAggregator, registry, device, NullLogger<GeocodeService>.Instance);
 
-        var sync = new CalendarSyncService(db, registry, vault, cache, http, dedup, device, geocode, NullLoggerFactory.Instance);
+        var hostFactory = new PluginHostServicesFactory(
+            vault, new NoopAuthBrokerFactory(), cache, http, NullLoggerFactory.Instance);
+        var sync = new CalendarSyncService(db, registry, hostFactory, dedup, device, geocode, NullLoggerFactory.Instance);
         var accounts = new AccountService(db, vault, sync, registry, device);
         var projection = new EventProjectionService(db);
         var catalog = new CalendarCatalog(db, device);

@@ -22,24 +22,20 @@ public sealed class CalendarSyncService : ICalendarSyncService
 {
     private readonly CalendarDbContext _db;
     private readonly IPluginRegistry _registry;
-    private readonly ISecretVault _vault;
-    private readonly IPluginCache _cache;
-    private readonly HttpClient _httpClient;
+    private readonly PluginHostServicesFactory _hostFactory;
     private readonly DedupGrouper _dedup;
     private readonly DeviceProvider _device;
     private readonly IGeocodeService _geocode;
     private readonly ILoggerFactory _loggerFactory;
 
     public CalendarSyncService(
-        CalendarDbContext db, IPluginRegistry registry, ISecretVault vault, IPluginCache cache,
-        HttpClient httpClient, DedupGrouper dedup, DeviceProvider device, IGeocodeService geocode,
+        CalendarDbContext db, IPluginRegistry registry, PluginHostServicesFactory hostFactory,
+        DedupGrouper dedup, DeviceProvider device, IGeocodeService geocode,
         ILoggerFactory loggerFactory)
     {
         _db = db;
         _registry = registry;
-        _vault = vault;
-        _cache = cache;
-        _httpClient = httpClient;
+        _hostFactory = hostFactory;
         _dedup = dedup;
         _device = device;
         _geocode = geocode;
@@ -59,13 +55,7 @@ public sealed class CalendarSyncService : ICalendarSyncService
                 $"No running calendar.read plugin '{account.PluginId}' for account {accountId}.");
         }
 
-        var configJson = account.AuthRef is { } authRef
-            ? await _vault.ReadAsync(authRef, ct).ConfigureAwait(false) ?? "{}"
-            : "{}";
-
-        var host = new PluginHostServices(
-            _loggerFactory.CreateLogger($"Plugin.{account.PluginId}"),
-            new NoopAuthBroker(), _cache, () => _httpClient, configJson);
+        var host = await _hostFactory.BuildAsync(account, registration.Manifest, ct).ConfigureAwait(false);
         await source.InitializeAsync(host, ct).ConfigureAwait(false);
 
         var deviceId = await _device.GetDeviceIdAsync(ct).ConfigureAwait(false);

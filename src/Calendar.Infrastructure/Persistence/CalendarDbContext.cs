@@ -34,6 +34,7 @@ public sealed class CalendarDbContext : DbContext
     public DbSet<TripItem> TripItems => Set<TripItem>();
     public DbSet<FareWatch> FareWatches => Set<FareWatch>();
     public DbSet<FareSample> FareSamples => Set<FareSample>();
+    public DbSet<NotificationLog> Notifications => Set<NotificationLog>();
     public DbSet<ScenarioDraft> ScenarioDrafts => Set<ScenarioDraft>();
     public DbSet<Share> Shares => Set<Share>();
     public DbSet<SyncState> SyncStates => Set<SyncState>();
@@ -215,6 +216,14 @@ public sealed class CalendarDbContext : DbContext
             e.HasOne<FareWatch>().WithMany().HasForeignKey(f => f.FareWatchId).OnDelete(DeleteBehavior.Cascade);
             e.HasIndex(f => new { f.FareWatchId, f.SampledAtUtc }).HasDatabaseName("IX_FareSample_Watch_Time")
                 .IsDescending(false, true);
+        });
+
+        b.Entity<NotificationLog>(e =>
+        {
+            e.ToTable("NotificationLog");
+            e.HasKey(n => n.Id);
+            e.HasOne<FareWatch>().WithMany().HasForeignKey(n => n.FareWatchId).OnDelete(DeleteBehavior.SetNull);
+            e.HasIndex(n => n.CreatedAtUtc).HasDatabaseName("IX_NotificationLog_CreatedAt").IsDescending();
         });
 
         b.Entity<ScenarioDraft>(e =>

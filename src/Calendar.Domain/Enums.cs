@@ -28,6 +28,12 @@ public enum OverrideKind { ForceMerge, NeverMerge, SetCanonical }
 /// <summary>Fare-watch subject (DATA-SCHEMA §2.6 <c>FareWatch.Kind</c>).</summary>
 public enum FareKind { Flight, Stay }
 
+/// <summary>Why a <see cref="Entities.NotificationLog"/> row was written (ARCHITECTURE §14, travel-fares-plugin.md §10).</summary>
+public enum NotificationKind { FareDrop, FareTarget }
+
+/// <summary>Delivery state of a notification beyond the persisted in-app log (email/webhook are stubbed).</summary>
+public enum NotificationChannel { InApp, Email, Webhook }
+
 /// <summary>What a scenario draft becomes when promoted (DATA-SCHEMA §2.6 <c>ScenarioDraft.Kind</c>).</summary>
 public enum DraftKind { Event, Flight, Stay, Activity }
 

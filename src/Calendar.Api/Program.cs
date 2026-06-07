@@ -20,6 +20,12 @@ builder.Services.AddPluginAuth(builder.Configuration);
 builder.Services.AddCalendarServices();
 builder.Services.AddAggregation();
 
+// Hosted fare-watch poll (ARCHITECTURE §14, travel-fares-plugin.md §10). Disabled unless a FareWatchPolling
+// section opts in; the manual POST /api/fares/watches/poll trigger always works regardless.
+builder.Services.Configure<Calendar.Infrastructure.Fares.FareWatchPollingOptions>(
+    builder.Configuration.GetSection("FareWatchPolling"));
+builder.Services.AddHostedService<Calendar.Infrastructure.Fares.FareWatchPollingService>();
+
 var app = builder.Build();
 
 // Migrate + seed (device identity, built-in categories) on startup.
@@ -262,6 +268,44 @@ api.MapGet("/fares/stays", async (
     });
 });
 
+// ── Fare watches + price history + notify-on-drop (ARCHITECTURE §14, travel-fares-plugin.md §10) ──
+//    Create/list/delete a watch, poll it through the *.price aggregators (sample + drop/target notify), and
+//    read its price series. Manual poll trigger complements the hosted background sweep.
+api.MapPost("/fares/watches", async (CreateFareWatchBody body, IFareWatchService watches, CancellationToken ct) =>
+{
+    if (!TryParseFareKind(body.Kind, out var kind))
+        return Results.BadRequest(new { error = $"unknown kind '{body.Kind}' (expected Flight|Stay)" });
+
+    try
+    {
+        var dto = await watches.CreateAsync(new CreateFareWatchRequest(
+            kind, body.RangeStart, body.RangeEnd, body.Pax ?? 1, body.Currency, body.TargetPrice,
+            body.DropThreshold, body.OriginIata, body.DestIata,
+            body.Lat, body.Lng, body.RadiusKm, body.Rooms,
+            body.OriginPlaceId, body.DestPlaceId), ct);
+        return Results.Created($"/api/fares/watches/{dto.Id}", dto);
+    }
+    catch (ArgumentException ex)
+    {
+        return Results.BadRequest(new { error = ex.Message });
+    }
+});
+
+api.MapGet("/fares/watches", async (IFareWatchService watches, CancellationToken ct) =>
+    Results.Ok(await watches.ListAsync(ct)));
+
+api.MapDelete("/fares/watches/{id:guid}", async (Guid id, IFareWatchService watches, CancellationToken ct) =>
+    await watches.DeleteAsync(id, ct) ? Results.NoContent() : Results.NotFound());
+
+api.MapGet("/fares/watches/{id:guid}/history", async (Guid id, IFareWatchService watches, CancellationToken ct) =>
+    Results.Ok(await watches.GetHistoryAsync(id, ct)));
+
+api.MapPost("/fares/watches/poll", async (IFareWatchService watches, CancellationToken ct) =>
+    Results.Ok(await watches.PollAsync(ct)));
+
+api.MapGet("/notifications", async (int? limit, INotificationReader notifications, CancellationToken ct) =>
+    Results.Ok(await notifications.ListAsync(limit ?? 100, ct)));
+
 // ── Sharing — management (API.md sharing). Tokens are returned to the owner here only. ──
 api.MapGet("/shares", async (IShareService shares, HttpRequest http, CancellationToken ct) =>
     Results.Ok((await shares.ListAsync(ct)).Select(dto => ToShareResponse(dto, http))));
@@ -394,6 +438,9 @@ static bool TryParseCabin(string? cabin, out CabinClass cabinClass)
     return Enum.TryParse(cabin, ignoreCase: true, out cabinClass) && Enum.IsDefined(cabinClass);
 }
 
+static bool TryParseFareKind(string? kind, out Calendar.Domain.FareKind value) =>
+    Enum.TryParse(kind, ignoreCase: true, out value) && Enum.IsDefined(value);
+
 // Map a write outcome to the wire shape so the UI can reflect Applied vs Queued (ARCHITECTURE §8).
 static object ToWriteResponse(EventWriteResult result) => new
 {
@@ -424,6 +471,16 @@ internal record UpdateEventBody(
 }
 internal record CreateShareBody(Guid? CalendarId, ShareFilterBody? Filter, string? Scope, DateTimeOffset? ExpiresAtUtc);
 internal record ShareFilterBody(Guid[]? Calendars, Guid[]? Categories);
+
+/// <summary>The wire body for <c>POST /api/fares/watches</c> (travel-fares-plugin.md §10).</summary>
+internal record CreateFareWatchBody(
+    string? Kind,
+    DateOnly RangeStart, DateOnly RangeEnd,
+    int? Pax, string? Currency,
+    decimal? TargetPrice, double? DropThreshold,
+    string? OriginIata, string? DestIata,
+    double? Lat, double? Lng, int? RadiusKm, int? Rooms,
+    Guid? OriginPlaceId, Guid? DestPlaceId);
 
 /// <summary>Exposed so web/integration tests can drive the host via WebApplicationFactory.</summary>
 public partial class Program;

@@ -1,6 +1,8 @@
 using System.Net;
 using Calendar.Application.Calendars;
+using Calendar.Application.Fares;
 using Calendar.Infrastructure.Calendars;
+using Calendar.Infrastructure.Fares;
 using Calendar.Plugin.Abstractions;
 using Calendar.Infrastructure.Plugins;
 using Microsoft.Extensions.DependencyInjection;
@@ -36,6 +38,14 @@ public static class CalendarServiceCollectionExtensions
         services.AddScoped<IAccountService, AccountService>();
         services.AddScoped<ICalendarCatalog, CalendarCatalog>();
         services.AddScoped<IShareService, ShareService>();
+
+        // ── Fare watches + price history + notify-on-drop (ARCHITECTURE §14, travel-fares-plugin.md §10) ──
+        // The in-app notifier is the persisted source of truth and also the read side; it is registered as both
+        // an INotifier (the poll fans out to every notifier) and the INotificationReader the API reads from.
+        services.AddScoped<InAppNotifier>();
+        services.AddScoped<IFareNotifier>(sp => sp.GetRequiredService<InAppNotifier>());
+        services.AddScoped<INotificationReader>(sp => sp.GetRequiredService<InAppNotifier>());
+        services.AddScoped<IFareWatchService, FareWatchService>();
 
         return services;
     }

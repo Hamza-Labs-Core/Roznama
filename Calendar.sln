@@ -45,6 +45,10 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Calendar.Plugin.Google", "p
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Calendar.Plugin.Google.Tests", "tests\Calendar.Plugin.Google.Tests\Calendar.Plugin.Google.Tests.csproj", "{069A31FB-0E40-4D28-9EE6-F71D6CB96440}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Calendar.Plugin.Microsoft", "plugins\Calendar.Plugin.Microsoft\Calendar.Plugin.Microsoft.csproj", "{A6361C22-29F2-4C33-BCAE-A87BDB41E762}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Calendar.Plugin.Microsoft.Tests", "tests\Calendar.Plugin.Microsoft.Tests\Calendar.Plugin.Microsoft.Tests.csproj", "{5FB777F5-37A5-49D9-9BA6-AC16A58858BA}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -259,6 +263,30 @@ Global
 		{069A31FB-0E40-4D28-9EE6-F71D6CB96440}.Release|x64.Build.0 = Release|Any CPU
 		{069A31FB-0E40-4D28-9EE6-F71D6CB96440}.Release|x86.ActiveCfg = Release|Any CPU
 		{069A31FB-0E40-4D28-9EE6-F71D6CB96440}.Release|x86.Build.0 = Release|Any CPU
+		{A6361C22-29F2-4C33-BCAE-A87BDB41E762}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A6361C22-29F2-4C33-BCAE-A87BDB41E762}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A6361C22-29F2-4C33-BCAE-A87BDB41E762}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{A6361C22-29F2-4C33-BCAE-A87BDB41E762}.Debug|x64.Build.0 = Debug|Any CPU
+		{A6361C22-29F2-4C33-BCAE-A87BDB41E762}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{A6361C22-29F2-4C33-BCAE-A87BDB41E762}.Debug|x86.Build.0 = Debug|Any CPU
+		{A6361C22-29F2-4C33-BCAE-A87BDB41E762}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A6361C22-29F2-4C33-BCAE-A87BDB41E762}.Release|Any CPU.Build.0 = Release|Any CPU
+		{A6361C22-29F2-4C33-BCAE-A87BDB41E762}.Release|x64.ActiveCfg = Release|Any CPU
+		{A6361C22-29F2-4C33-BCAE-A87BDB41E762}.Release|x64.Build.0 = Release|Any CPU
+		{A6361C22-29F2-4C33-BCAE-A87BDB41E762}.Release|x86.ActiveCfg = Release|Any CPU
+		{A6361C22-29F2-4C33-BCAE-A87BDB41E762}.Release|x86.Build.0 = Release|Any CPU
+		{5FB777F5-37A5-49D9-9BA6-AC16A58858BA}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{5FB777F5-37A5-49D9-9BA6-AC16A58858BA}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{5FB777F5-37A5-49D9-9BA6-AC16A58858BA}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{5FB777F5-37A5-49D9-9BA6-AC16A58858BA}.Debug|x64.Build.0 = Debug|Any CPU
+		{5FB777F5-37A5-49D9-9BA6-AC16A58858BA}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{5FB777F5-37A5-49D9-9BA6-AC16A58858BA}.Debug|x86.Build.0 = Debug|Any CPU
+		{5FB777F5-37A5-49D9-9BA6-AC16A58858BA}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{5FB777F5-37A5-49D9-9BA6-AC16A58858BA}.Release|Any CPU.Build.0 = Release|Any CPU
+		{5FB777F5-37A5-49D9-9BA6-AC16A58858BA}.Release|x64.ActiveCfg = Release|Any CPU
+		{5FB777F5-37A5-49D9-9BA6-AC16A58858BA}.Release|x64.Build.0 = Release|Any CPU
+		{5FB777F5-37A5-49D9-9BA6-AC16A58858BA}.Release|x86.ActiveCfg = Release|Any CPU
+		{5FB777F5-37A5-49D9-9BA6-AC16A58858BA}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -282,5 +310,7 @@ Global
 		{572443C8-F246-4BD2-B29C-1B77CF24F09C} = {07D57EEB-2F50-60C4-C011-FE4FA775C9A8}
 		{BE4FEA50-03DC-451A-95EE-676A23B576E9} = {07D57EEB-2F50-60C4-C011-FE4FA775C9A8}
 		{069A31FB-0E40-4D28-9EE6-F71D6CB96440} = {07D57EEB-2F50-60C4-C011-FE4FA775C9A8}
+		{A6361C22-29F2-4C33-BCAE-A87BDB41E762} = {07D57EEB-2F50-60C4-C011-FE4FA775C9A8}
+		{5FB777F5-37A5-49D9-9BA6-AC16A58858BA} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 	EndGlobalSection
 EndGlobal

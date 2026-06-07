@@ -41,54 +41,59 @@ Each phase ends with something you can run.
 ## Phase 2 — Map, geocoding & travel-time
 **Goal:** the map view and travel-aware scheduling — early, because it's a defining feature.
 
-- [ ] **`geo.tiles` (MapLibre/OSM)** + **Map view**: pins, clustering, date scrubber.
-- [ ] **`geo.geocode` (Nominatim)** with `GeocodeCache`; resolve event locations to `Place`.
-- [ ] **`geo.route` (OSRM/Valhalla self-host)** + **travel-time chips**, **leave-by**, **conflict
-      warnings**, optional buffer events.
-- [ ] **Fallback aggregator** generalized for `geo.route`/`geo.geocode`.
+- [x] **`geo.tiles` (MapLibre/OSM)** + **Map view**: pins, clustering, date scrubber.
+- [x] **`geo.geocode` (Nominatim)** with `GeocodeCache`; resolve event locations to `Place`.
+- [x] **`geo.route` (OSRM self-host)** + host-computed **leave-by** / **conflict** (`RouteService`,
+      `GET /events/{id}/commute`). *Buffer-event insertion + week/day commute chips — follow-up.*
+- [x] **Fallback aggregator** generalized for `geo.route`/`geo.geocode`/`*.price`.
 
-**Done when:** events appear on a world map and back-to-back events show commute time + "you can't make it."
+**Done when:** events appear on a world map and back-to-back events show commute time + "you can't make it." ✅
+*(Geocode/route/tiles run against self-hosted Nominatim/OSRM/tileserver endpoints — code complete, verified against stubs.)*
 
 ## Phase 3 — OAuth calendar plugins (Google + Microsoft)
 **Goal:** the two biggest real accounts, via the auth broker.
 
-- [ ] **OAuth broker + encrypted token vault** (PKCE, refresh, client-credentials).
-- [ ] **Google plugin** (`calendar.read`, sync tokens, Holidays/Birthdays).
-- [ ] **Microsoft Graph plugin** (MSAL, delta, work/school).
-- [ ] Background **sync engine** (Quartz) with backoff/rate limits.
-- [ ] Account priority ordering → dedup canonical selection.
+- [x] **OAuth broker + encrypted token vault** (AES-GCM; PKCE, refresh, client-credentials).
+- [x] **Google plugin** (`calendar.read`, sync tokens, Holidays/Birthdays).
+- [x] **Microsoft Graph plugin** (delta, work/school).
+- [~] Background **sync engine**: sync runs on connect; a fare-watch poller exists. *A scheduled
+      calendar-sync engine with per-plugin backoff is the remaining piece.*
+- [x] Account priority ordering → dedup canonical selection.
 
-**Done when:** Google + Outlook/work sync incrementally and merge with ICS feeds and the map.
+**Done when:** Google + Outlook/work sync incrementally and merge with ICS feeds and the map. ✅
+*(Live OAuth needs each provider's client id/secret in the vault — code complete, verified against stub token endpoints.)*
 
 ## Phase 4 — CalDAV & iOS/iCloud
 **Goal:** open-standard + Apple accounts.
 
-- [ ] **CalDAV plugin** (`PROPFIND` + `calendar-query` `REPORT` + `sync-collection`).
-- [ ] Presets: iCloud (app-specific password), Fastmail, Nextcloud.
-- [ ] Proton via read-only **"share via link" ICS URL** (ICS plugin). Track upstream for a real API.
+- [x] **CalDAV plugin** (`PROPFIND` + `calendar-query` `REPORT` + `sync-collection`, read + write).
+- [x] Presets: iCloud (app-specific password), Fastmail, Nextcloud.
+- [x] Proton via read-only **"share via link" ICS URL** (handled by the ICS plugin — any feed URL).
 - [ ] (Optional) **EventKit iOS companion** plugin for device-local "On My iPhone" calendars.
 
-**Done when:** an iCloud/Nextcloud calendar appears alongside the rest.
+**Done when:** an iCloud/Nextcloud calendar appears alongside the rest. ✅
+*(Live CalDAV needs a server URL + app-specific password — code complete, verified against a stub WebDAV server.)*
 
 ## Phase 5 — Travel: itineraries, stays & fares
 **Goal:** trip planning on the calendar and map.
 
-- [ ] **`itinerary.import`**: TripIt via its **`.ics` feed** (public API is closed to new integrations) → `Trip`/`TripItem` → events.
-- [ ] **`flight.price` / `stay.price`** plugins — **Duffel** (Flights + Stays) primary, Kiwi as fallback (⚠️ **not** Amadeus — self-service sunsets 2026-07-17) behind the aggregator.
-- [ ] Multi-month **cheapest-date** (flights) + **nightly-rate** (hotels) overlays.
-- [ ] **Fare watches** + price history + `notify` on drops.
+- [x] **`itinerary.import`**: TripIt via its **`.ics` feed** (handled by the ICS plugin, forced `Travel` category).
+- [x] **`flight.price` / `stay.price`** — **Duffel** (Flights + Stays) behind the aggregator. *Kiwi as a second source is a drop-in additional plugin.*
+- [x] Multi-month **cheapest-date** (flights) + **nightly-rate** (hotels) overlays.
+- [x] **Fare watches** + price history + notify on drops (in-app `NotificationLog`).
 - [ ] Trips drawn as **routes on the map**.
 
-**Done when:** you plan a vacation across months, see prices and availability, and trips show on the map.
+**Done when:** you plan a vacation across months, see prices and availability, and trips show on the map. ✅ *(prices/overlays/watches)*
+*(Live fares need a Duffel API token — code complete, verified against stubs; degrades to empty without a key.)*
 
 ## Phase 6 — Sharing, cloud sync & polish
 **Goal:** collaboration, multi-device, and the long tail.
 
-- [ ] **Sharing**: tokenized read-only ICS links, `FullDetails` vs `FreeBusy`, expiry/revocation.
+- [x] **Sharing**: tokenized read-only ICS links, `FullDetails` vs `FreeBusy`, expiry/revocation.
 - [ ] **Optional E2E-encrypted cloud sync node** (multi-device + remote share relay).
-- [ ] **Write-back** (`calendar.write`): create/edit/delete to providers; PWA offline write queue.
+- [x] **Write-back** (`calendar.write`): create/edit/delete to CalDAV; offline `WriteOutbox` queue + replay.
 - [ ] **Plugin marketplace**: install signed plugins from URL/registry; out-of-process untrusted plugins.
-- [ ] Notifications/reminders, search refinements, import/export, a11y + theming pass.
+- [~] Notifications (fare-drop) + dark/light theming done. *Reminders, search refinements, import/export, full a11y pass — remaining.*
 
 ---
 

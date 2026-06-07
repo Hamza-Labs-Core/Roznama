@@ -5,7 +5,25 @@ using YamlDotNet.Serialization.NamingConventions;
 namespace Calendar.Infrastructure.Plugins;
 
 /// <summary>The outcome of parsing a <c>plugin.yaml</c>: the SDK manifest plus on-disk file hints.</summary>
-public sealed record ManifestParseResult(PluginManifest Manifest, string? AssemblyFile, string? OpenApiFile);
+public sealed record ManifestParseResult(
+    PluginManifest Manifest,
+    string? AssemblyFile,
+    string? OpenApiFile,
+    IReadOnlyDictionary<string, ConnectorOperationSpec> Operations);
+
+/// <summary>
+/// One declarative <c>operations.&lt;name&gt;</c> block (PLUGIN-HOST.md §5.2/§5.3). <see cref="Call"/> is either
+/// an <c>operationId</c> or a <c>"METHOD path"</c> pair; the query/path/header maps bind capability arguments
+/// into the request (values are <c>{q...}</c> placeholders); <see cref="Map"/> is the JSONata expression that
+/// shapes the response JSON into the SDK return DTO.
+/// </summary>
+public sealed record ConnectorOperationSpec(
+    string Call,
+    IReadOnlyDictionary<string, string> Query,
+    IReadOnlyDictionary<string, string> Path,
+    IReadOnlyDictionary<string, string> Headers,
+    string? Body,
+    string? Map);
 
 /// <summary>
 /// Reads <c>plugin.yaml</c> into a <see cref="PluginManifest"/> (PLUGIN-HOST.md §3.2). Tolerant of unknown
@@ -57,7 +75,36 @@ public sealed class YamlManifestReader
             dto.Id!, dto.Name!, dto.Version!, dto.SdkVersion!, kind,
             capabilities, publisher, auth, network, config);
 
-        return new ManifestParseResult(manifest, dto.Assembly, dto.OpenApi);
+        var operations = ParseOperations(dto.Operations);
+
+        return new ManifestParseResult(manifest, dto.Assembly, dto.OpenApi, operations);
+    }
+
+    private static IReadOnlyDictionary<string, ConnectorOperationSpec> ParseOperations(
+        Dictionary<string, YamlOperation>? operations)
+    {
+        if (operations is null || operations.Count == 0)
+            return new Dictionary<string, ConnectorOperationSpec>(StringComparer.Ordinal);
+
+        var result = new Dictionary<string, ConnectorOperationSpec>(StringComparer.Ordinal);
+        foreach (var (name, op) in operations)
+        {
+            if (op is null)
+                continue;
+            if (string.IsNullOrWhiteSpace(op.Call))
+                throw new ManifestFormatException(
+                    $"plugin.yaml operation '{name}' is missing required field 'call'.");
+
+            result[name] = new ConnectorOperationSpec(
+                op.Call!.Trim(),
+                op.Query ?? new Dictionary<string, string>(StringComparer.Ordinal),
+                op.Path ?? new Dictionary<string, string>(StringComparer.Ordinal),
+                op.Headers ?? new Dictionary<string, string>(StringComparer.Ordinal),
+                op.Body,
+                op.Map);
+        }
+
+        return result;
     }
 
     private static void Require(string? value, string field)
@@ -112,6 +159,17 @@ public sealed class YamlManifestReader
         public YamlConfig? Config { get; set; }
         public string? Assembly { get; set; }   // main DLL filename (assembly plugins)
         public string? OpenApi { get; set; }     // OpenAPI document filename (declarative plugins)
+        public Dictionary<string, YamlOperation>? Operations { get; set; } // declarative capability operations
+    }
+
+    private sealed class YamlOperation
+    {
+        public string? Call { get; set; }
+        public Dictionary<string, string>? Query { get; set; }
+        public Dictionary<string, string>? Path { get; set; }
+        public Dictionary<string, string>? Headers { get; set; }
+        public string? Body { get; set; }
+        public string? Map { get; set; }
     }
 
     private sealed class YamlPublisher

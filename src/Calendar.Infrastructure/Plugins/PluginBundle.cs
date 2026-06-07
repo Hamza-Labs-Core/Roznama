@@ -11,4 +11,5 @@ public sealed record PluginBundle(
     string ManifestPath,
     PluginManifest Manifest,
     string? MainDllPath,
-    string? OpenApiPath);
+    string? OpenApiPath,
+    IReadOnlyDictionary<string, ConnectorOperationSpec> Operations);

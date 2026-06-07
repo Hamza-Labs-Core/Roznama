@@ -22,6 +22,7 @@ public sealed class PluginHost
     private readonly ILogger<PluginHost> _logger;
     private readonly PluginHostOptions _options;
     private readonly IAuthBrokerFactory _authBrokerFactory;
+    private readonly Func<PluginManifest, HttpClient>? _clientFactory;
 
     public PluginHost(
         YamlManifestReader manifestReader,
@@ -31,7 +32,8 @@ public sealed class PluginHost
         IPluginRegistry registry,
         ILoggerFactory loggerFactory,
         IOptions<PluginHostOptions> options,
-        IAuthBrokerFactory? authBrokerFactory = null)
+        IAuthBrokerFactory? authBrokerFactory = null,
+        Func<PluginManifest, HttpClient>? clientFactory = null)
     {
         _manifestReader = manifestReader;
         _validator = validator;
@@ -44,6 +46,9 @@ public sealed class PluginHost
         // Until an account binds a credential, a plugin is initialized with a scheme-only broker (None →
         // Noop). The full per-account broker is wired when an ACCOUNT is bound (PLUGIN-HOST.md §2.3, §6).
         _authBrokerFactory = authBrokerFactory ?? new NoopAuthBrokerFactory();
+        // Tests and the connector engine inject the egress-filtered client here; the default is a plain client
+        // until the EgressAllowlistHandler + Polly pipeline are wired (PLUGIN-HOST.md §7.1).
+        _clientFactory = clientFactory;
     }
 
     /// <summary>Run discovery across all configured directories and register every bundle (or its fault).</summary>
@@ -106,7 +111,8 @@ public sealed class PluginHost
             manifestPath,
             manifest,
             parsed.AssemblyFile is { } dll ? Path.Combine(bundleDir, dll) : null,
-            parsed.OpenApiFile is { } api ? Path.Combine(bundleDir, api) : null);
+            parsed.OpenApiFile is { } api ? Path.Combine(bundleDir, api) : null,
+            parsed.Operations);
 
         try
         {
@@ -145,7 +151,7 @@ public sealed class PluginHost
     private async Task InitializeAsync(PluginManifest manifest, IPlugin plugin, CancellationToken ct)
     {
         // One client per plugin, captured by the closure so it lives as long as the plugin (no per-call leak).
-        var client = new HttpClient(new HttpClientHandler
+        var client = _clientFactory?.Invoke(manifest) ?? new HttpClient(new HttpClientHandler
         {
             AutomaticDecompression = System.Net.DecompressionMethods.All,
             MaxAutomaticRedirections = 5,

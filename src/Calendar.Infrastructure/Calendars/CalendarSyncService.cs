@@ -27,11 +27,13 @@ public sealed class CalendarSyncService : ICalendarSyncService
     private readonly HttpClient _httpClient;
     private readonly DedupGrouper _dedup;
     private readonly DeviceProvider _device;
+    private readonly IGeocodeService _geocode;
     private readonly ILoggerFactory _loggerFactory;
 
     public CalendarSyncService(
         CalendarDbContext db, IPluginRegistry registry, ISecretVault vault, IPluginCache cache,
-        HttpClient httpClient, DedupGrouper dedup, DeviceProvider device, ILoggerFactory loggerFactory)
+        HttpClient httpClient, DedupGrouper dedup, DeviceProvider device, IGeocodeService geocode,
+        ILoggerFactory loggerFactory)
     {
         _db = db;
         _registry = registry;
@@ -40,6 +42,7 @@ public sealed class CalendarSyncService : ICalendarSyncService
         _httpClient = httpClient;
         _dedup = dedup;
         _device = device;
+        _geocode = geocode;
         _loggerFactory = loggerFactory;
     }
 
@@ -102,6 +105,19 @@ public sealed class CalendarSyncService : ICalendarSyncService
 
             await _db.SaveChangesAsync(ct).ConfigureAwait(false);
             await LinkOverridesToMastersAsync(calendar.Id, ct).ConfigureAwait(false);
+
+            // Geocode newly-synced events with a Location → Place pins (ARCHITECTURE §7). A no-op when no
+            // geo.geocode provider is registered; failures never fail the sync (events keep their raw text).
+            try
+            {
+                await _geocode.GeocodePendingEventsAsync(calendar.Id, ct).ConfigureAwait(false);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                _loggerFactory.CreateLogger<CalendarSyncService>()
+                    .LogWarning(ex, "Geocoding pass failed for calendar {CalendarId}; events keep their raw text.", calendar.Id);
+            }
+
             await UpsertSyncStateAsync(account.Id, calendar.Id, result.NewSyncToken, ct).ConfigureAwait(false);
         }
 

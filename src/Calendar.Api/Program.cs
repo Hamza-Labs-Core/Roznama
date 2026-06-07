@@ -87,6 +87,13 @@ api.MapPatch("/categories/{id:guid}", async (Guid id, VisibilityPatch patch, ICa
 api.MapGet("/events", async (DateTimeOffset from, DateTimeOffset to, IEventProjectionService projection, CancellationToken ct) =>
     Results.Ok(await projection.GetEventsAsync(from, to, ct)));
 
+// ── Map (ARCHITECTURE §7): events with a resolved place (pins) + the place catalog ──
+api.MapGet("/map/events", async (DateTimeOffset from, DateTimeOffset to, IMapViewService map, CancellationToken ct) =>
+    Results.Ok(await map.GetMapEventsAsync(from, to, ct)));
+
+api.MapGet("/places", async (IMapViewService map, CancellationToken ct) =>
+    Results.Ok(await map.ListPlacesAsync(ct)));
+
 app.MapFallbackToFile("index.html");
 
 app.Run();

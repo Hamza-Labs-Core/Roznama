@@ -1,0 +1,50 @@
+id: org.unifiedcalendar.geo.nominatim
+name: Nominatim geocoder
+version: 1.0.0
+sdkVersion: "1.x"
+kind: declarative
+openApi: openapi.yaml
+capabilities:
+  - geo.geocode
+# Self-host: AuthScheme.None, no key (geo-geocoding-places-plugin.md §4.4). The public OSM
+# endpoint is deliberately absent — its policy forbids no-code/LLM-generated generic
+# geocoders. Re-point the OpenAPI server + this allowlist at your own instance.
+auth:
+  scheme: none
+network:
+  allow:
+    - nominatim.internal.example.com
+operations:
+  geocode:
+    call: GET /search
+    query:
+      q: "{q.query}"
+      format: "jsonv2"
+      addressdetails: "1"
+      limit: "1"
+      viewbox: "{q.bias.viewbox}"
+      accept-language: "{q.bias.lang}"
+    map: |
+      $[0].{
+        "Lat":     $number(lat),
+        "Lng":     $number(lon),
+        "Label":   display_name,
+        "Address": display_name,
+        "Source":  "nominatim"
+      }
+  reverse:
+    call: GET /reverse
+    query:
+      lat: "{q.lat}"
+      lon: "{q.lng}"
+      format: "jsonv2"
+      addressdetails: "1"
+      zoom: "18"
+    map: |
+      {
+        "Lat":     $number(lat),
+        "Lng":     $number(lon),
+        "Label":   display_name,
+        "Address": display_name,
+        "Source":  "nominatim"
+      }

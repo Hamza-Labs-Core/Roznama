@@ -8,6 +8,7 @@ using Calendar.Infrastructure.Plugins;
 using Calendar.Plugin.Abstractions;
 using Calendar.Plugin.Ics;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Calendar.Integration.Tests;
@@ -161,7 +162,14 @@ public sealed class IcsSyncProjectionTests : IDisposable
         var cache = new InMemoryPluginCache();
         var http = new HttpClient(handler);
 
-        var sync = new CalendarSyncService(db, registry, vault, cache, http, dedup, device, NullLoggerFactory.Instance);
+        var geocodeAggregator = new Calendar.Infrastructure.Aggregation.GeocodeAggregator(
+            registry,
+            new Calendar.Infrastructure.Aggregation.InMemoryAggregationResultCache(),
+            NullLogger<Calendar.Infrastructure.Aggregation.GeocodeAggregator>.Instance);
+        var geocode = new GeocodeService(
+            db, geocodeAggregator, registry, device, NullLogger<GeocodeService>.Instance);
+
+        var sync = new CalendarSyncService(db, registry, vault, cache, http, dedup, device, geocode, NullLoggerFactory.Instance);
         var accounts = new AccountService(db, vault, sync, registry, device);
         var projection = new EventProjectionService(db);
         var catalog = new CalendarCatalog(db, device);

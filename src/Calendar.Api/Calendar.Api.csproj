@@ -48,6 +48,24 @@
           SkipUnchangedFiles="true" />
   </Target>
 
+  <!--
+    Static declarative-connector bundles (geo-geocoding-places-plugin.md §10). Unlike assembly plugins
+    these are DATA, not projects: a plain folder with plugin.yaml (kind: declarative) + an OpenAPI yaml,
+    no csproj/bin. Each StaticConnectorBundle points at such a folder; %(BundleId) is the output directory
+    the host enumerates. The CopyStaticConnectorBundles target copies the folder verbatim into
+    <out>/plugins/<BundleId>, alongside the assembly bundles, so the host discovers it identically.
+  -->
+  <ItemGroup>
+    <StaticConnectorBundle Include="..\..\plugins\connectors\nominatim\**\*"
+                           BundleId="geo-nominatim" SourceDir="..\..\plugins\connectors\nominatim" />
+  </ItemGroup>
+
+  <Target Name="CopyStaticConnectorBundles" AfterTargets="Build">
+    <Copy SourceFiles="@(StaticConnectorBundle)"
+          DestinationFiles="@(StaticConnectorBundle->'$(OutDir)plugins\%(BundleId)\%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+  </Target>
+
   <PropertyGroup>
     <TargetFramework>net9.0</TargetFramework>
     <Nullable>enable</Nullable>

@@ -1,0 +1,44 @@
+openapi: 3.0.0
+info:
+  title: Nominatim
+  description: >-
+    OSM's geocoder, self-hosted (geo-geocoding-places-plugin.md §4). The public OSM
+    endpoint is intentionally NOT offered as a server here: its usage policy forbids
+    no-code/LLM-generated generic geocoders. Set the server url to your own instance.
+  version: "1.0"
+servers:
+  - url: https://nominatim.internal.example.com
+paths:
+  /search:
+    get:
+      operationId: search
+      summary: Forward geocode — free-text query to the best matching place.
+      parameters:
+        - { name: q, in: query, required: true, schema: { type: string } }
+        - { name: format, in: query, schema: { type: string } }
+        - { name: addressdetails, in: query, schema: { type: string } }
+        - { name: limit, in: query, schema: { type: string } }
+        - { name: viewbox, in: query, schema: { type: string } }
+        - { name: accept-language, in: query, schema: { type: string } }
+      responses:
+        "200":
+          description: ranked results (jsonv2 array)
+          content:
+            application/json:
+              schema: { type: array, items: { type: object } }
+  /reverse:
+    get:
+      operationId: reverse
+      summary: Reverse geocode — a coordinate to its address/place (map click-to-place).
+      parameters:
+        - { name: lat, in: query, required: true, schema: { type: string } }
+        - { name: lon, in: query, required: true, schema: { type: string } }
+        - { name: format, in: query, schema: { type: string } }
+        - { name: addressdetails, in: query, schema: { type: string } }
+        - { name: zoom, in: query, schema: { type: string } }
+      responses:
+        "200":
+          description: the single resolved place (jsonv2 object)
+          content:
+            application/json:
+              schema: { type: object }

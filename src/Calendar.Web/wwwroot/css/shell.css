@@ -168,6 +168,46 @@ html, body {
 .multi-month__card { display: flex; flex-direction: column; gap: 8px; }
 .multi-month__title { font-size: 0.9rem; font-weight: 600; margin: 0; }
 
+/* ── Event chips ── */
+.month-grid__cell { display: flex; flex-direction: column; gap: 2px; overflow: hidden; }
+.chip {
+    font-size: 0.72rem;
+    line-height: 1.2;
+    padding: 2px 6px;
+    border-left: 3px solid var(--accent);
+    border-radius: 3px;
+    background: var(--panel-alt);
+    color: var(--ink);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: flex;
+    gap: 4px;
+    align-items: center;
+}
+.chip__title { overflow: hidden; text-overflow: ellipsis; }
+.chip__dup { color: var(--muted); font-size: 0.66rem; flex: 0 0 auto; }
+.chip--more { border-left-color: transparent; color: var(--muted); background: transparent; padding-left: 9px; }
+
+.month-grid__dots { display: flex; flex-wrap: wrap; gap: 2px; margin-top: 2px; }
+.month-grid__dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; }
+
+/* ── Add-account ── */
+.add-account { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+.add-account__input {
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 6px 10px;
+    font-size: 0.82rem;
+    background: var(--panel);
+    color: var(--ink);
+}
+.add-account__error { color: #d05050; font-size: 0.78rem; margin: 0; }
+
+.swatch { width: 10px; height: 10px; border-radius: 3px; display: inline-block; flex: 0 0 auto; }
+.dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 4px; }
+.dot--ok { background: #34a853; }
+
 /* ── Placeholder views (deliberate empty state for not-yet-built views) ── */
 .placeholder { display: flex; align-items: center; justify-content: center; height: 100%; padding: 24px; }
 .placeholder__card {

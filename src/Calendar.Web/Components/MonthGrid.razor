@@ -1,5 +1,6 @@
-@* Empty month grid (UI-WIREFRAMES §2). Phase 0 renders the calendar scaffold only — no event chips yet;
-   the ICS plugin (Phase 1) fills the shared stream this grid will project. *@
+@using Calendar.Web.Services
+
+@* Month grid (UI-WIREFRAMES §2). Renders event chips colored by source calendar over the date cells. *@
 
 <div class="month-grid @(Compact ? "month-grid--compact" : "")" role="grid" aria-label="@Month.ToString("MMMM yyyy")">
     <div class="month-grid__head" role="row">
@@ -11,10 +12,41 @@
     <div class="month-grid__body">
         @foreach (var cell in Cells)
         {
+            var dayEvents = EventsOn(cell.Date);
             <div class="month-grid__cell @(cell.InMonth ? "" : "month-grid__cell--muted") @(cell.IsToday ? "month-grid__cell--today" : "")"
                  role="gridcell"
                  aria-label="@cell.Date.ToString("D")">
                 <span class="month-grid__daynum">@cell.Date.Day</span>
+
+                @if (Compact)
+                {
+                    @if (dayEvents.Count > 0)
+                    {
+                        <div class="month-grid__dots">
+                            @foreach (var ev in dayEvents.Take(4))
+                            {
+                                <span class="month-grid__dot" style="background:@Color(ev)" title="@ev.Title"></span>
+                            }
+                        </div>
+                    }
+                }
+                else
+                {
+                    @foreach (var ev in dayEvents.Take(3))
+                    {
+                        <div class="chip" style="border-left-color:@Color(ev)" title="@ChipTitle(ev)">
+                            <span class="chip__title">@ev.Title</span>
+                            @if (ev.DuplicateCount > 0)
+                            {
+                                <span class="chip__dup">+@ev.DuplicateCount</span>
+                            }
+                        </div>
+                    }
+                    @if (dayEvents.Count > 3)
+                    {
+                        <div class="chip chip--more">+@(dayEvents.Count - 3) more</div>
+                    }
+                }
             </div>
         }
     </div>
@@ -27,19 +59,52 @@
     /// <summary>Compact mode: small fixed-height cells for the multi-month planner (UI-WIREFRAMES §3).</summary>
     [Parameter] public bool Compact { get; set; }
 
+    /// <summary>Projected events to paint over the grid (already filtered/deduped by the host).</summary>
+    [Parameter] public IReadOnlyList<EventDto>? Events { get; set; }
+
     private static readonly string[] DayHeaders = { "Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun" };
 
     private IReadOnlyList<Cell> Cells => BuildCells(Month);
 
     private readonly record struct Cell(DateOnly Date, bool InMonth, bool IsToday);
 
+    private List<EventDto> EventsOn(DateOnly date)
+    {
+        if (Events is null || Events.Count == 0)
+            return new List<EventDto>();
+
+        return Events
+            .Where(e => Covers(e, date))
+            .OrderBy(e => e.AllDay ? 0 : 1)
+            .ThenBy(e => e.StartUtc)
+            .ToList();
+    }
+
+    private static bool Covers(EventDto e, DateOnly date)
+    {
+        var start = DateOnly.FromDateTime(e.StartUtc.UtcDateTime);
+        var end = DateOnly.FromDateTime(e.EndUtc.UtcDateTime);
+        if (end < start) end = start;
+        return date >= start && date <= end;
+    }
+
+    private static string Color(EventDto e) =>
+        string.IsNullOrWhiteSpace(e.Color) ? HueColor(e.CalendarId) : e.Color!;
+
+    private static string HueColor(Guid id)
+    {
+        var hue = (uint)id.GetHashCode() % 360;
+        return $"hsl({hue} 60% 45%)";
+    }
+
+    private static string ChipTitle(EventDto e) =>
+        string.IsNullOrWhiteSpace(e.Location) ? e.Title : $"{e.Title} · {e.Location}";
+
     private static IReadOnlyList<Cell> BuildCells(DateOnly month)
     {
         var today = DateOnly.FromDateTime(DateTime.Today);
         var first = new DateOnly(month.Year, month.Month, 1);
-
-        // Monday-first grid: offset back to the Monday on/before the 1st.
-        var offset = ((int)first.DayOfWeek + 6) % 7;
+        var offset = ((int)first.DayOfWeek + 6) % 7; // Monday-first
         var start = first.AddDays(-offset);
 
         var cells = new List<Cell>(42);

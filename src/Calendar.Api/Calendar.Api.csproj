@@ -3,11 +3,25 @@
   <ItemGroup>
     <ProjectReference Include="..\Calendar.Infrastructure\Calendar.Infrastructure.csproj" />
     <ProjectReference Include="..\Calendar.Web\Calendar.Web.csproj" />
+    <!-- Build the ICS plugin but do NOT reference it — it loads at runtime via the collectible ALC. -->
+    <ProjectReference Include="..\..\plugins\Calendar.Plugin.Ics\Calendar.Plugin.Ics.csproj"
+                      ReferenceOutputAssembly="false" Private="false" />
   </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.Server" Version="9.0.0" />
   </ItemGroup>
+
+  <!-- Copy the built ICS plugin bundle (dll + deps.json + plugin.yaml + Ical.Net.dll) into <out>/plugins/ics. -->
+  <Target Name="CopyIcsPlugin" AfterTargets="Build">
+    <ItemGroup>
+      <IcsBundle Include="..\..\plugins\Calendar.Plugin.Ics\bin\$(Configuration)\net9.0\**\*"
+                 Exclude="..\..\plugins\Calendar.Plugin.Ics\bin\$(Configuration)\net9.0\Calendar.Plugin.Abstractions.*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(IcsBundle)"
+          DestinationFiles="@(IcsBundle->'$(OutDir)plugins\ics\%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+  </Target>
 
   <PropertyGroup>
     <TargetFramework>net9.0</TargetFramework>

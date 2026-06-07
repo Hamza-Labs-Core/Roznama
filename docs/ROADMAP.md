@@ -29,13 +29,13 @@ Each phase ends with something you can run.
 ## Phase 1 — UI slice via the ICS plugin (no OAuth)
 **Goal:** real events end-to-end, proving the UI and the plugin model together.
 
-- [ ] **ICS plugin** (`calendar.read`, declarative-ish via Ical.Net): fetch feed, parse, expand RRULE.
-- [ ] Schema-driven **"Add account"** flow (paste an ICS URL — holidays, birthdays).
-- [ ] **Month + Multi-month** views from the normalized stream.
-- [ ] Per-calendar **show/hide** + **category** hide (Holidays, Birthdays).
-- [ ] **Duplicate detection & grouping** with merge/split overrides.
+- [x] **ICS plugin** (`calendar.read`, via Ical.Net): fetch (conditional GET) feed, parse, diff, expand RRULE.
+- [x] **"Add account"** flow (paste an ICS URL — holidays, birthdays).
+- [x] **Month + Multi-month** views from the normalized stream.
+- [x] Per-calendar **show/hide** + **category** hide (Holidays, Birthdays).
+- [x] **Duplicate detection & grouping** (auto canonical by account priority). *Merge/split override UI — follow-up.*
 
-**Done when:** two holiday feeds render, duplicates collapse, birthdays hide with one switch — offline.
+**Done when:** two holiday feeds render, duplicates collapse, birthdays hide with one switch — offline. ✅
 **This is the first demo.**
 
 ## Phase 2 — Map, geocoding & travel-time

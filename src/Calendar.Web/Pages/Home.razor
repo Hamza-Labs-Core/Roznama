@@ -1,6 +1,5 @@
 @page "/"
-@using Calendar.Web.Model
-@using Calendar.Web.Components
+@inject CalendarApiClient Api
 
 <PageTitle>Unified Calendar</PageTitle>
 
@@ -12,22 +11,70 @@
 
         <section class="sidebar-group">
             <h2 class="sidebar-group__title">Accounts</h2>
-            <p class="sidebar-group__empty">No accounts yet.</p>
-            <button class="btn btn--ghost" disabled>+ Add account</button>
+            @if (_accounts.Count == 0)
+            {
+                <p class="sidebar-group__empty">No accounts yet.</p>
+            }
+            else
+            {
+                <ul class="sidebar-list">
+                    @foreach (var account in _accounts)
+                    {
+                        <li class="sidebar-list__item">
+                            <span class="dot dot--ok"></span> @account.DisplayName
+                        </li>
+                    }
+                </ul>
+            }
+
+            <div class="add-account">
+                <input class="add-account__input" placeholder="Paste an ICS feed URL…"
+                       @bind="_feedUrl" @bind:event="oninput" disabled="@_busy" />
+                <button class="btn" @onclick="ConnectAsync" disabled="@(_busy || string.IsNullOrWhiteSpace(_feedUrl))">
+                    @(_busy ? "Adding…" : "+ Add ICS feed")
+                </button>
+                @if (_error is not null)
+                {
+                    <p class="add-account__error">@_error</p>
+                }
+            </div>
         </section>
 
         <section class="sidebar-group">
             <h2 class="sidebar-group__title">Calendars</h2>
-            <p class="sidebar-group__empty">Connect an account to see calendars.</p>
+            @if (_calendars.Count == 0)
+            {
+                <p class="sidebar-group__empty">Connect an account to see calendars.</p>
+            }
+            else
+            {
+                <ul class="sidebar-list">
+                    @foreach (var cal in _calendars)
+                    {
+                        <li class="sidebar-list__item">
+                            <label>
+                                <input type="checkbox" checked="@cal.IsVisible"
+                                       @onchange="e => ToggleCalendarAsync(cal, (bool)e.Value!)" />
+                                <span class="swatch" style="background:@SwatchColor(cal)"></span>
+                                @cal.Name
+                            </label>
+                        </li>
+                    }
+                </ul>
+            }
         </section>
 
         <section class="sidebar-group">
             <h2 class="sidebar-group__title">Categories</h2>
             <ul class="sidebar-list">
-                @foreach (var category in SeedCategories)
+                @foreach (var cat in _categories)
                 {
                     <li class="sidebar-list__item">
-                        <label><input type="checkbox" checked disabled /> @category</label>
+                        <label>
+                            <input type="checkbox" checked="@cat.IsVisible"
+                                   @onchange="e => ToggleCategoryAsync(cat, (bool)e.Value!)" />
+                            @cat.Name
+                        </label>
                     </li>
                 }
             </ul>
@@ -36,15 +83,14 @@
         <footer class="shell__status">⛅ offline · ↻ (0)</footer>
     </aside>
 
-    @* ── View canvas: toolbar + active view ── *@
+    @* ── View canvas ── *@
     <main class="shell__canvas">
         <header class="toolbar">
             <div class="view-switcher" role="tablist" aria-label="Calendar view">
                 @foreach (var option in CalendarViews.All)
                 {
                     <button class="view-switcher__btn @(option.View == _view ? "is-active" : "")"
-                            role="tab"
-                            aria-selected="@(option.View == _view)"
+                            role="tab" aria-selected="@(option.View == _view)"
                             @onclick="() => _view = option.View">
                         @option.Label
                     </button>
@@ -68,10 +114,10 @@
             @switch (_view)
             {
                 case CalendarView.Month:
-                    <MonthGrid Month="_month" />
+                    <MonthGrid Month="_month" Events="_events" />
                     break;
                 case CalendarView.MultiMonth:
-                    <MultiMonthGrid Start="_month" Count="6" />
+                    <MultiMonthGrid Start="_month" Count="6" Events="_events" />
                     break;
                 default:
                     <div class="placeholder">
@@ -101,7 +147,75 @@
     private CalendarView _view = CalendarView.Month;
     private DateOnly _month = FirstOfThisMonth();
 
-    private static readonly string[] SeedCategories = { "Work", "Personal", "Birthday", "Holiday", "Travel" };
+    private IReadOnlyList<EventDto> _events = Array.Empty<EventDto>();
+    private IReadOnlyList<AccountDto> _accounts = Array.Empty<AccountDto>();
+    private IReadOnlyList<CalendarDto> _calendars = Array.Empty<CalendarDto>();
+    private IReadOnlyList<CategoryDto> _categories = Array.Empty<CategoryDto>();
+
+    private string _feedUrl = string.Empty;
+    private bool _busy;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync() => await ReloadAllAsync();
+
+    private async Task ReloadAllAsync()
+    {
+        _accounts = await Api.GetAccountsAsync();
+        _calendars = await Api.GetCalendarsAsync();
+        _categories = await Api.GetCategoriesAsync();
+        await ReloadEventsAsync();
+    }
+
+    private async Task ReloadEventsAsync()
+    {
+        // One generous window covers both the month and 6-month multi-month views.
+        var from = new DateTimeOffset(_month.AddMonths(-1).ToDateTime(TimeOnly.MinValue), TimeSpan.Zero);
+        var to = new DateTimeOffset(_month.AddMonths(8).ToDateTime(TimeOnly.MinValue), TimeSpan.Zero);
+        _events = await Api.GetEventsAsync(from, to);
+    }
+
+    private async Task ConnectAsync()
+    {
+        _busy = true;
+        _error = null;
+        try
+        {
+            if (!await Api.ConnectIcsAsync(_feedUrl.Trim(), name: null))
+                _error = "Could not connect that feed. Check the URL.";
+            else
+                _feedUrl = string.Empty;
+            await ReloadAllAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task ToggleCalendarAsync(CalendarDto cal, bool isVisible)
+    {
+        await Api.SetCalendarVisibilityAsync(cal.Id, isVisible);
+        _calendars = await Api.GetCalendarsAsync();
+        await ReloadEventsAsync();
+    }
+
+    private async Task ToggleCategoryAsync(CategoryDto cat, bool isVisible)
+    {
+        await Api.SetCategoryVisibilityAsync(cat.Id, isVisible);
+        _categories = await Api.GetCategoriesAsync();
+        await ReloadEventsAsync();
+    }
+
+    private static string SwatchColor(CalendarDto cal)
+    {
+        if (!string.IsNullOrWhiteSpace(cal.Color)) return cal.Color!;
+        var hue = (uint)cal.Id.GetHashCode() % 360;
+        return $"hsl({hue} 60% 45%)";
+    }
 
     private static DateOnly FirstOfThisMonth()
     {
@@ -109,7 +223,7 @@
         return new DateOnly(today.Year, today.Month, 1);
     }
 
-    private void PrevMonth() => _month = _month.AddMonths(-1);
-    private void NextMonth() => _month = _month.AddMonths(1);
-    private void Today() => _month = FirstOfThisMonth();
+    private async Task PrevMonth() { _month = _month.AddMonths(-1); await ReloadEventsAsync(); }
+    private async Task NextMonth() { _month = _month.AddMonths(1); await ReloadEventsAsync(); }
+    private async Task Today() { _month = FirstOfThisMonth(); await ReloadEventsAsync(); }
 }

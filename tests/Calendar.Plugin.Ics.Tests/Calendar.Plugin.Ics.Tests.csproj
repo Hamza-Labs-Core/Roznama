@@ -19,9 +19,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\Calendar.Infrastructure\Calendar.Infrastructure.csproj" />
-    <ProjectReference Include="..\fixtures\Calendar.Plugin.TrivialTest\Calendar.Plugin.TrivialTest.csproj" />
     <ProjectReference Include="..\..\plugins\Calendar.Plugin.Ics\Calendar.Plugin.Ics.csproj" />
+    <ProjectReference Include="..\..\src\Calendar.Infrastructure\Calendar.Infrastructure.csproj" />
   </ItemGroup>
 
 </Project>

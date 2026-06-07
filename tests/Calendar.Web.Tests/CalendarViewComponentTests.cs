@@ -1,5 +1,6 @@
 using Bunit;
 using Calendar.Web.Components;
+using Calendar.Web.Services;
 
 namespace Calendar.Web.Tests;
 
@@ -43,6 +44,45 @@ public class MonthGridTests : TestContext
             .Add(x => x.Compact, true));
 
         Assert.NotNull(cut.Find(".month-grid--compact"));
+    }
+
+    [Fact]
+    public void Renders_a_chip_for_an_event_on_its_day()
+    {
+        var events = new List<EventDto>
+        {
+            new(Guid.NewGuid(), Guid.NewGuid(), "Work", null, "Standup",
+                new DateTimeOffset(2026, 6, 10, 9, 0, 0, TimeSpan.Zero),
+                new DateTimeOffset(2026, 6, 10, 9, 30, 0, TimeSpan.Zero),
+                AllDay: false, Location: "Berlin", IsRecurringInstance: false, MasterId: null,
+                DuplicateCount: 0, Categories: new[] { "Work" }),
+        };
+
+        var cut = RenderComponent<MonthGrid>(p => p
+            .Add(x => x.Month, new DateOnly(2026, 6, 1))
+            .Add(x => x.Events, events));
+
+        var chip = cut.Find(".chip");
+        Assert.Contains("Standup", chip.TextContent);
+    }
+
+    [Fact]
+    public void Shows_a_duplicate_badge_when_duplicate_count_is_positive()
+    {
+        var events = new List<EventDto>
+        {
+            new(Guid.NewGuid(), Guid.NewGuid(), "Holidays", null, "New Year",
+                new DateTimeOffset(2026, 6, 5, 0, 0, 0, TimeSpan.Zero),
+                new DateTimeOffset(2026, 6, 5, 0, 0, 0, TimeSpan.Zero),
+                AllDay: true, Location: null, IsRecurringInstance: false, MasterId: null,
+                DuplicateCount: 2, Categories: Array.Empty<string>()),
+        };
+
+        var cut = RenderComponent<MonthGrid>(p => p
+            .Add(x => x.Month, new DateOnly(2026, 6, 1))
+            .Add(x => x.Events, events));
+
+        Assert.Contains("+2", cut.Find(".chip__dup").TextContent);
     }
 }
 

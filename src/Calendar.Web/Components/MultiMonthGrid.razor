@@ -6,7 +6,7 @@
     {
         <section class="multi-month__card">
             <h3 class="multi-month__title">@month.ToString("MMMM yyyy")</h3>
-            <MonthGrid Month="month" Compact="true" />
+            <MonthGrid Month="month" Compact="true" Events="Events" />
         </section>
     }
 </div>
@@ -17,6 +17,9 @@
 
     /// <summary>How many consecutive months to render.</summary>
     [Parameter] public int Count { get; set; } = 6;
+
+    /// <summary>Projected events to paint across the months.</summary>
+    [Parameter] public IReadOnlyList<EventDto>? Events { get; set; }
 
     private IEnumerable<DateOnly> Months =>
         Enumerable.Range(0, Count).Select(i => Start.AddMonths(i));

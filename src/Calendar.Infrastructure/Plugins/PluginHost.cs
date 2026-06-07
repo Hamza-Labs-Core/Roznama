@@ -138,11 +138,18 @@ public sealed class PluginHost
 
     private async Task InitializeAsync(PluginManifest manifest, IPlugin plugin, CancellationToken ct)
     {
+        // One client per plugin, captured by the closure so it lives as long as the plugin (no per-call leak).
+        var client = new HttpClient(new HttpClientHandler
+        {
+            AutomaticDecompression = System.Net.DecompressionMethods.All,
+            MaxAutomaticRedirections = 5,
+        });
+
         var host = new PluginHostServices(
             _loggerFactory.CreateLogger($"Plugin.{manifest.Id}"),
             new NoopAuthBroker(),
             new InMemoryPluginCache(),
-            static () => new HttpClient(),
+            () => client,
             configJson: "{}");
 
         await plugin.InitializeAsync(host, ct).ConfigureAwait(false);

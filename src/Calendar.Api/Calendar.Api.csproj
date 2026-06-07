@@ -17,6 +17,8 @@
                       ReferenceOutputAssembly="false" Private="false" BundleId="ics" />
     <FirstPartyPlugin Include="..\..\plugins\Calendar.Plugin.CalDav\Calendar.Plugin.CalDav.csproj"
                       ReferenceOutputAssembly="false" Private="false" BundleId="caldav" />
+    <FirstPartyPlugin Include="..\..\plugins\Calendar.Plugin.Google\Calendar.Plugin.Google.csproj"
+                      ReferenceOutputAssembly="false" Private="false" BundleId="google" />
   </ItemGroup>
 
   <ItemGroup>

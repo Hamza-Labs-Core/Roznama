@@ -3,6 +3,7 @@ using Calendar.Domain;
 using Calendar.Infrastructure.Auth;
 using Calendar.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 
 namespace Calendar.Infrastructure.Tests;
@@ -15,9 +16,13 @@ namespace Calendar.Infrastructure.Tests;
 public sealed class AesGcmTokenVaultTests : IDisposable
 {
     private readonly string _dbPath = Path.Combine(Path.GetTempPath(), $"calendar-vault-{Guid.NewGuid():N}.db");
+    private readonly ServiceProvider _provider;
 
     private CalendarDbContext NewContext() =>
         new(new DbContextOptionsBuilder<CalendarDbContext>().UseSqlite($"Data Source={_dbPath}").Options);
+
+    /// <summary>A real scope factory over the same SQLite file — the vault opens a fresh context per op.</summary>
+    private IServiceScopeFactory ScopeFactory => _provider.GetRequiredService<IServiceScopeFactory>();
 
     private static IVaultKeyProvider Keys() =>
         new ConfigurationVaultKeyProvider(Options.Create(new VaultKeyOptions
@@ -31,6 +36,10 @@ public sealed class AesGcmTokenVaultTests : IDisposable
     {
         using var ctx = NewContext();
         ctx.Database.Migrate();
+
+        var services = new ServiceCollection();
+        services.AddDbContext<CalendarDbContext>(o => o.UseSqlite($"Data Source={_dbPath}"));
+        _provider = services.BuildServiceProvider();
     }
 
     [Fact]
@@ -39,13 +48,13 @@ public sealed class AesGcmTokenVaultTests : IDisposable
         Guid id;
         using (var ctx = NewContext())
         {
-            var vault = new AesGcmTokenVault(ctx, Keys());
+            var vault = new AesGcmTokenVault(ScopeFactory, Keys());
             id = await vault.StoreAsync(SecretKind.OAuthRefreshToken, "RT-secret", "account:abc", null, CancellationToken.None);
         }
 
         using (var ctx = NewContext())
         {
-            var vault = new AesGcmTokenVault(ctx, Keys());
+            var vault = new AesGcmTokenVault(ScopeFactory, Keys());
             var entry = await vault.ReadAsync(id, "account:abc", CancellationToken.None);
             Assert.Equal("RT-secret", entry!.Value);
             Assert.Equal(SecretKind.OAuthRefreshToken, entry.Kind);
@@ -56,7 +65,7 @@ public sealed class AesGcmTokenVaultTests : IDisposable
     public async Task The_plaintext_is_never_persisted_in_the_row()
     {
         using var ctx = NewContext();
-        var vault = new AesGcmTokenVault(ctx, Keys());
+        var vault = new AesGcmTokenVault(ScopeFactory, Keys());
         var id = await vault.StoreAsync(SecretKind.ApiKey, "PLAINTEXT-SECRET", "aad", null, CancellationToken.None);
 
         ctx.ChangeTracker.Clear();
@@ -75,7 +84,7 @@ public sealed class AesGcmTokenVaultTests : IDisposable
     public async Task Reading_with_the_wrong_aad_fails_the_auth_tag()
     {
         using var ctx = NewContext();
-        var vault = new AesGcmTokenVault(ctx, Keys());
+        var vault = new AesGcmTokenVault(ScopeFactory, Keys());
         var id = await vault.StoreAsync(SecretKind.ApiKey, "k", "account:right", null, CancellationToken.None);
 
         await Assert.ThrowsAsync<AuthenticationTagMismatchException>(
@@ -88,7 +97,7 @@ public sealed class AesGcmTokenVaultTests : IDisposable
         Guid id;
         using (var ctx = NewContext())
         {
-            var vault = new AesGcmTokenVault(ctx, Keys());
+            var vault = new AesGcmTokenVault(ScopeFactory, Keys());
             id = await vault.StoreAsync(SecretKind.ApiKey, "k", "aad", null, CancellationToken.None);
         }
 
@@ -103,7 +112,7 @@ public sealed class AesGcmTokenVaultTests : IDisposable
 
         using (var ctx = NewContext())
         {
-            var vault = new AesGcmTokenVault(ctx, Keys());
+            var vault = new AesGcmTokenVault(ScopeFactory, Keys());
             await Assert.ThrowsAsync<AuthenticationTagMismatchException>(
                 () => vault.ReadAsync(id, "aad", CancellationToken.None));
         }
@@ -113,7 +122,7 @@ public sealed class AesGcmTokenVaultTests : IDisposable
     public async Task Update_rotates_the_value_under_a_stable_handle()
     {
         using var ctx = NewContext();
-        var vault = new AesGcmTokenVault(ctx, Keys());
+        var vault = new AesGcmTokenVault(ScopeFactory, Keys());
         var id = await vault.StoreAsync(SecretKind.OAuthRefreshToken, "RT-OLD", "aad", null, CancellationToken.None);
 
         await vault.UpdateAsync(id, SecretKind.OAuthRefreshToken, "RT-NEW", "aad", null, CancellationToken.None);
@@ -126,7 +135,7 @@ public sealed class AesGcmTokenVaultTests : IDisposable
     public async Task Each_write_uses_a_fresh_nonce()
     {
         using var ctx = NewContext();
-        var vault = new AesGcmTokenVault(ctx, Keys());
+        var vault = new AesGcmTokenVault(ScopeFactory, Keys());
         var a = await vault.StoreAsync(SecretKind.ApiKey, "same", "aad", null, CancellationToken.None);
         var b = await vault.StoreAsync(SecretKind.ApiKey, "same", "aad", null, CancellationToken.None);
 
@@ -141,7 +150,7 @@ public sealed class AesGcmTokenVaultTests : IDisposable
     public async Task Remove_purges_the_entry()
     {
         using var ctx = NewContext();
-        var vault = new AesGcmTokenVault(ctx, Keys());
+        var vault = new AesGcmTokenVault(ScopeFactory, Keys());
         var id = await vault.StoreAsync(SecretKind.ApiKey, "k", "aad", null, CancellationToken.None);
 
         await vault.RemoveAsync(id, CancellationToken.None);
@@ -151,6 +160,7 @@ public sealed class AesGcmTokenVaultTests : IDisposable
 
     public void Dispose()
     {
+        _provider.Dispose();
         try { File.Delete(_dbPath); } catch (IOException) { }
     }
 }

@@ -3,6 +3,7 @@ name: Google Calendar
 version: 0.1.0
 sdkVersion: "1.x"
 kind: assembly
+assembly: Calendar.Plugin.Google.dll
 capabilities: [calendar.read]            # calendar.write later
 publisher:
   name: Unified Calendar

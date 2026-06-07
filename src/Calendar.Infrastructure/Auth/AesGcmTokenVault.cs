@@ -4,6 +4,7 @@ using Calendar.Application.Auth;
 using Calendar.Domain;
 using Calendar.Domain.Entities;
 using Calendar.Infrastructure.Persistence;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Calendar.Infrastructure.Auth;
 
@@ -20,12 +21,17 @@ public sealed class AesGcmTokenVault : ITokenVault
     private const int NonceSize = 12; // 96-bit nonce — the AES-GCM standard
     private const int TagSize = 16;   // 128-bit auth tag
 
-    private readonly CalendarDbContext _db;
+    private readonly IServiceScopeFactory _scopeFactory;
     private readonly IVaultKeyProvider _keys;
 
-    public AesGcmTokenVault(CalendarDbContext db, IVaultKeyProvider keys)
+    /// <summary>
+    /// Takes an <see cref="IServiceScopeFactory"/> rather than a <see cref="CalendarDbContext"/> so the vault is
+    /// safe as a singleton: long-lived plugin brokers hold it, and it opens a fresh DbContext scope per
+    /// operation instead of capturing a scoped context.
+    /// </summary>
+    public AesGcmTokenVault(IServiceScopeFactory scopeFactory, IVaultKeyProvider keys)
     {
-        _db = db;
+        _scopeFactory = scopeFactory;
         _keys = keys;
     }
 
@@ -47,15 +53,19 @@ public sealed class AesGcmTokenVault : ITokenVault
             RotatedAtUtc = DateTimeOffset.UtcNow,
             RowVersion = Guid.NewGuid().ToString("N"),
         };
-        _db.Secrets.Add(secret);
-        await _db.SaveChangesAsync(ct).ConfigureAwait(false);
+        using var scope = _scopeFactory.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<CalendarDbContext>();
+        db.Secrets.Add(secret);
+        await db.SaveChangesAsync(ct).ConfigureAwait(false);
         return secret.Id;
     }
 
     public async Task UpdateAsync(
         Guid id, SecretKind kind, string value, string? aad, DateTimeOffset? expiresAtUtc, CancellationToken ct)
     {
-        var secret = await _db.Secrets.FindAsync(new object?[] { id }, ct).ConfigureAwait(false)
+        using var scope = _scopeFactory.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<CalendarDbContext>();
+        var secret = await db.Secrets.FindAsync(new object?[] { id }, ct).ConfigureAwait(false)
             ?? throw new InvalidOperationException($"Vault entry {id} does not exist.");
 
         var sealed_ = Seal(value, aad);
@@ -69,12 +79,14 @@ public sealed class AesGcmTokenVault : ITokenVault
         secret.ExpiresAtUtc = expiresAtUtc;
         secret.RotatedAtUtc = DateTimeOffset.UtcNow;
         secret.RowVersion = Guid.NewGuid().ToString("N");
-        await _db.SaveChangesAsync(ct).ConfigureAwait(false);
+        await db.SaveChangesAsync(ct).ConfigureAwait(false);
     }
 
     public async Task<VaultEntry?> ReadAsync(Guid id, string? aad, CancellationToken ct)
     {
-        var secret = await _db.Secrets.FindAsync(new object?[] { id }, ct).ConfigureAwait(false);
+        using var scope = _scopeFactory.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<CalendarDbContext>();
+        var secret = await db.Secrets.FindAsync(new object?[] { id }, ct).ConfigureAwait(false);
         if (secret is null)
             return null;
 
@@ -84,11 +96,13 @@ public sealed class AesGcmTokenVault : ITokenVault
 
     public async Task RemoveAsync(Guid id, CancellationToken ct)
     {
-        var secret = await _db.Secrets.FindAsync(new object?[] { id }, ct).ConfigureAwait(false);
+        using var scope = _scopeFactory.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<CalendarDbContext>();
+        var secret = await db.Secrets.FindAsync(new object?[] { id }, ct).ConfigureAwait(false);
         if (secret is null)
             return;
-        _db.Secrets.Remove(secret);
-        await _db.SaveChangesAsync(ct).ConfigureAwait(false);
+        db.Secrets.Remove(secret);
+        await db.SaveChangesAsync(ct).ConfigureAwait(false);
     }
 
     private SealedBlob Seal(string plaintext, string? aad)

@@ -20,8 +20,10 @@ public static class PluginAuthServiceCollectionExtensions
         services.AddSingleton<TimeProvider>(TimeProvider.System);
         services.AddSingleton<IVaultKeyProvider, ConfigurationVaultKeyProvider>();
 
-        // The vault writes to the per-request CalendarDbContext; broker/flow read tokens through ITokenVault.
-        services.AddScoped<ITokenVault, AesGcmTokenVault>();
+        // Singleton-safe: the vault opens a DbContext scope per operation (it's held by long-lived plugin
+        // brokers), so the broker factory and flow can be singletons too — and the flow MUST be a singleton
+        // because it holds the in-memory pending-PKCE state across the begin/complete requests.
+        services.AddSingleton<ITokenVault, AesGcmTokenVault>();
 
         // A dedicated short-lived HttpClient for token-endpoint calls (decompression on); not egress-filtered
         // because the broker only ever talks to the provider's configured AuthSpec.TokenUrl.
@@ -30,8 +32,8 @@ public static class PluginAuthServiceCollectionExtensions
             AutomaticDecompression = DecompressionMethods.All,
         }));
 
-        services.AddScoped<IAuthBrokerFactory, AuthBrokerFactory>();
-        services.AddScoped<IOAuthFlowService, OAuthFlowService>();
+        services.AddSingleton<IAuthBrokerFactory, AuthBrokerFactory>();
+        services.AddSingleton<IOAuthFlowService, OAuthFlowService>();
 
         return services;
     }

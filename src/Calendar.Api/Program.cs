@@ -16,6 +16,7 @@ builder.Services.AddCalendarDatabase(builder.Configuration);
 builder.Services.AddPluginHost(builder.Configuration);
 builder.Services.AddPluginAuth(builder.Configuration);
 builder.Services.AddCalendarServices();
+builder.Services.AddAggregation();
 
 var app = builder.Build();
 

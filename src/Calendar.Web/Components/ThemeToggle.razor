@@ -1,0 +1,29 @@
+@inject IJSRuntime JS
+
+<button class="btn btn--icon"
+        @onclick="ToggleAsync"
+        title="@(_dark ? "Switch to light mode" : "Switch to dark mode")"
+        aria-label="Toggle dark mode">
+    @(_dark ? "☀" : "☾")
+</button>
+
+@code {
+    private bool _dark;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        var effective = await JS.InvokeAsync<string>("ucTheme.effective");
+        if (_dark != (effective == "dark"))
+        {
+            _dark = effective == "dark";
+            StateHasChanged();
+        }
+    }
+
+    private async Task ToggleAsync()
+    {
+        var effective = await JS.InvokeAsync<string>("ucTheme.toggle");
+        _dark = effective == "dark";
+    }
+}

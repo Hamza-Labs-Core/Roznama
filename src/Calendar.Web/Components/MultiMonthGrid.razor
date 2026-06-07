@@ -1,0 +1,23 @@
+@* Multi-month planner (UI-WIREFRAMES §3): a responsive run of compact month grids starting at Start.
+   Phase 0 renders the empty scaffold; the shared event stream and price/scenario overlays land later. *@
+
+<div class="multi-month">
+    @foreach (var month in Months)
+    {
+        <section class="multi-month__card">
+            <h3 class="multi-month__title">@month.ToString("MMMM yyyy")</h3>
+            <MonthGrid Month="month" Compact="true" />
+        </section>
+    }
+</div>
+
+@code {
+    /// <summary>First month to show (any day within it).</summary>
+    [Parameter] public DateOnly Start { get; set; } = DateOnly.FromDateTime(DateTime.Today);
+
+    /// <summary>How many consecutive months to render.</summary>
+    [Parameter] public int Count { get; set; } = 6;
+
+    private IEnumerable<DateOnly> Months =>
+        Enumerable.Range(0, Count).Select(i => Start.AddMonths(i));
+}

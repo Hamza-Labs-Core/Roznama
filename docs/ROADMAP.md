@@ -14,17 +14,17 @@ Each phase ends with something you can run.
 ## Phase 0 — Foundations & plugin host
 **Goal:** a runnable skeleton where capabilities, not providers, drive everything.
 
-- [ ] Create `Calendar.sln` + projects from [Solution layout](ARCHITECTURE.md#18-solution-layout),
+- [x] Create `Calendar.sln` + projects from [Solution layout](ARCHITECTURE.md#18-solution-layout),
       including **`Calendar.Plugin.Abstractions`** first — implement it straight from [SDK-CONTRACT.md](SDK-CONTRACT.md).
-- [ ] **Plugin registry + loader** per the [plugin host design](PLUGIN-HOST.md): `AssemblyLoadContext`
+- [x] **Plugin registry + loader** per the [plugin host design](PLUGIN-HOST.md): `AssemblyLoadContext`
       for assembly plugins, manifest parsing, capability registration. Stub connector engine.
-- [ ] EF Core + SQLite; first migration from the full [data schema](DATA-SCHEMA.md)
+- [x] EF Core + SQLite; first migration from the full [data schema](DATA-SCHEMA.md)
       (all tables, indexes, recurrence & sync metadata).
-- [ ] Blazor WASM shell per the [wireframes](UI-WIREFRAMES.md): sidebar (accounts/calendars/categories)
+- [x] Blazor WASM shell per the [wireframes](UI-WIREFRAMES.md): sidebar (accounts/calendars/categories)
       + empty month grid + view switcher.
-- [ ] Unit-test project + CI (build + test).
+- [x] Unit-test project + CI (build + test).
 
-**Done when:** the app launches, the registry can load a trivial plugin, and tests run green.
+**Done when:** the app launches, the registry can load a trivial plugin, and tests run green. ✅
 
 ## Phase 1 — UI slice via the ICS plugin (no OAuth)
 **Goal:** real events end-to-end, proving the UI and the plugin model together.

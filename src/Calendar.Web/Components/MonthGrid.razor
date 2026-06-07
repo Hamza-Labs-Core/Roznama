@@ -1,0 +1,53 @@
+@* Empty month grid (UI-WIREFRAMES §2). Phase 0 renders the calendar scaffold only — no event chips yet;
+   the ICS plugin (Phase 1) fills the shared stream this grid will project. *@
+
+<div class="month-grid @(Compact ? "month-grid--compact" : "")" role="grid" aria-label="@Month.ToString("MMMM yyyy")">
+    <div class="month-grid__head" role="row">
+        @foreach (var day in DayHeaders)
+        {
+            <div class="month-grid__dow" role="columnheader">@day</div>
+        }
+    </div>
+    <div class="month-grid__body">
+        @foreach (var cell in Cells)
+        {
+            <div class="month-grid__cell @(cell.InMonth ? "" : "month-grid__cell--muted") @(cell.IsToday ? "month-grid__cell--today" : "")"
+                 role="gridcell"
+                 aria-label="@cell.Date.ToString("D")">
+                <span class="month-grid__daynum">@cell.Date.Day</span>
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    /// <summary>The month to render (any day within it).</summary>
+    [Parameter] public DateOnly Month { get; set; } = DateOnly.FromDateTime(DateTime.Today);
+
+    /// <summary>Compact mode: small fixed-height cells for the multi-month planner (UI-WIREFRAMES §3).</summary>
+    [Parameter] public bool Compact { get; set; }
+
+    private static readonly string[] DayHeaders = { "Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun" };
+
+    private IReadOnlyList<Cell> Cells => BuildCells(Month);
+
+    private readonly record struct Cell(DateOnly Date, bool InMonth, bool IsToday);
+
+    private static IReadOnlyList<Cell> BuildCells(DateOnly month)
+    {
+        var today = DateOnly.FromDateTime(DateTime.Today);
+        var first = new DateOnly(month.Year, month.Month, 1);
+
+        // Monday-first grid: offset back to the Monday on/before the 1st.
+        var offset = ((int)first.DayOfWeek + 6) % 7;
+        var start = first.AddDays(-offset);
+
+        var cells = new List<Cell>(42);
+        for (var i = 0; i < 42; i++)
+        {
+            var date = start.AddDays(i);
+            cells.Add(new Cell(date, date.Month == month.Month, date == today));
+        }
+        return cells;
+    }
+}

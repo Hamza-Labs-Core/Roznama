@@ -1,0 +1,15 @@
+<Project>
+
+  <!-- Shared build settings for the whole solution. Per ARCHITECTURE.md §2 the stack is C# / .NET 9. -->
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <!-- The SDK contract is a public API surface; missing XML docs there are intentional noise to silence. -->
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+  </PropertyGroup>
+
+</Project>

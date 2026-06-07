@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Text.Json;
+using Calendar.Application.Auth;
 using Calendar.Plugin.Abstractions;
 using Microsoft.Extensions.Logging;
 
@@ -59,6 +60,23 @@ public sealed class NoopAuthBroker : IAuthBroker
 
     public Task ApplyAsync(HttpRequestMessage request, IReadOnlyList<string>? scopes, CancellationToken ct) =>
         Task.CompletedTask;
+}
+
+/// <summary>
+/// Fallback <see cref="IAuthBrokerFactory"/> used when the host is constructed without the real factory (e.g.
+/// the Phase 0 load-only tests). It serves <see cref="AuthScheme.None"/> directly and refuses credentialed
+/// schemes — those require the DI-wired <see cref="Calendar.Infrastructure.Auth.AuthBrokerFactory"/> with a vault.
+/// </summary>
+public sealed class NoopAuthBrokerFactory : IAuthBrokerFactory
+{
+    public IAuthBroker Create(CredentialContext context)
+    {
+        if (context.Spec.Scheme == AuthScheme.None)
+            return new NoopAuthBroker();
+        throw new InvalidOperationException(
+            $"Auth scheme '{context.Spec.Scheme}' requires the real AuthBrokerFactory (vault-backed); " +
+            "register it via AddPluginAuth().");
+    }
 }
 
 /// <summary>A process-local, plugin-namespaced cache. Backed by SQLite in a later phase (PLUGIN-HOST.md §7.2).</summary>

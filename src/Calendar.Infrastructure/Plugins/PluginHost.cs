@@ -1,3 +1,4 @@
+using Calendar.Application.Auth;
 using Calendar.Application.Plugins;
 using Calendar.Plugin.Abstractions;
 using Microsoft.Extensions.Logging;
@@ -20,6 +21,7 @@ public sealed class PluginHost
     private readonly ILoggerFactory _loggerFactory;
     private readonly ILogger<PluginHost> _logger;
     private readonly PluginHostOptions _options;
+    private readonly IAuthBrokerFactory _authBrokerFactory;
 
     public PluginHost(
         YamlManifestReader manifestReader,
@@ -28,7 +30,8 @@ public sealed class PluginHost
         ConnectorEngine connectorEngine,
         IPluginRegistry registry,
         ILoggerFactory loggerFactory,
-        IOptions<PluginHostOptions> options)
+        IOptions<PluginHostOptions> options,
+        IAuthBrokerFactory? authBrokerFactory = null)
     {
         _manifestReader = manifestReader;
         _validator = validator;
@@ -38,6 +41,9 @@ public sealed class PluginHost
         _loggerFactory = loggerFactory;
         _logger = loggerFactory.CreateLogger<PluginHost>();
         _options = options.Value;
+        // Until an account binds a credential, a plugin is initialized with a scheme-only broker (None →
+        // Noop). The full per-account broker is wired when an ACCOUNT is bound (PLUGIN-HOST.md §2.3, §6).
+        _authBrokerFactory = authBrokerFactory ?? new NoopAuthBrokerFactory();
     }
 
     /// <summary>Run discovery across all configured directories and register every bundle (or its fault).</summary>
@@ -145,9 +151,14 @@ public sealed class PluginHost
             MaxAutomaticRedirections = 5,
         });
 
+        // At load time no account is bound yet, so the broker is built from the manifest AuthSpec with no
+        // stored credential. For AuthScheme.None this is the NoopAuthBroker; for credentialed schemes the
+        // host re-binds a per-account broker once an ACCOUNT supplies its AuthRef (PLUGIN-HOST.md §6.1).
+        var broker = _authBrokerFactory.Create(new CredentialContext(Guid.Empty, manifest.Auth));
+
         var host = new PluginHostServices(
             _loggerFactory.CreateLogger($"Plugin.{manifest.Id}"),
-            new NoopAuthBroker(),
+            broker,
             new InMemoryPluginCache(),
             () => client,
             configJson: "{}");

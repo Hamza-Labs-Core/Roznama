@@ -24,6 +24,7 @@ public sealed class FirstPartyPluginLoadTests : IDisposable
         ("Calendar.Plugin.Google", "org.unifiedcalendar.google"),
         ("Calendar.Plugin.Microsoft", "org.unifiedcalendar.microsoft"),
         ("Calendar.Plugin.MapLibre", "org.unifiedcalendar.tiles.maplibre"),
+        ("Calendar.Plugin.Duffel", "org.unifiedcalendar.duffel"),
     };
 
     [Fact]

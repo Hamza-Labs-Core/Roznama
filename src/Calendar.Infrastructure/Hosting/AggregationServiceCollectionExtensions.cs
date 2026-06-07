@@ -1,5 +1,7 @@
 using Calendar.Application.Aggregation;
+using Calendar.Application.Fares;
 using Calendar.Infrastructure.Aggregation;
+using Calendar.Infrastructure.Fares;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Calendar.Infrastructure.Hosting;
@@ -20,6 +22,9 @@ public static class AggregationServiceCollectionExtensions
         services.AddSingleton<IPlaceSearchAggregator, PlaceSearchAggregator>();
         services.AddSingleton<IFlightPricingAggregator, FlightPricingAggregator>();
         services.AddSingleton<IStayPricingAggregator, StayPricingAggregator>();
+
+        // The host pricing facade fronts both aggregators for the /api/fares endpoints (travel-fares-plugin.md §9).
+        services.AddSingleton<IFarePricingService, FarePricingService>();
 
         return services;
     }

@@ -23,6 +23,8 @@
                       ReferenceOutputAssembly="false" Private="false" BundleId="microsoft" />
     <FirstPartyPlugin Include="..\..\plugins\Calendar.Plugin.MapLibre\Calendar.Plugin.MapLibre.csproj"
                       ReferenceOutputAssembly="false" Private="false" BundleId="maplibre" />
+    <FirstPartyPlugin Include="..\..\plugins\Calendar.Plugin.Duffel\Calendar.Plugin.Duffel.csproj"
+                      ReferenceOutputAssembly="false" Private="false" BundleId="duffel" />
   </ItemGroup>
 
   <ItemGroup>

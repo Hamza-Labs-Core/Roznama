@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <!-- Copy NuGet deps into bin so the plugin bundle is self-contained for the collectible ALC
+         (mirrors the Google/Microsoft assembly bundles). -->
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The SDK contract is supplied by the host (shared ALC boundary), so don't copy it into the bundle. -->
+    <ProjectReference Include="..\..\src\Calendar.Plugin.Abstractions\Calendar.Plugin.Abstractions.csproj"
+                      Private="false" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="plugin.yaml" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

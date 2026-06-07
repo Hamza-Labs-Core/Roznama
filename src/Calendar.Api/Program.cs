@@ -94,9 +94,44 @@ api.MapGet("/map/events", async (DateTimeOffset from, DateTimeOffset to, IMapVie
 api.MapGet("/places", async (IMapViewService map, CancellationToken ct) =>
     Results.Ok(await map.ListPlacesAsync(ct)));
 
+// ── Commute (geo-routing-plugin.md §4): the host-computed RouteLeg for the leg arriving at this event ──
+api.MapGet("/events/{id:guid}/commute", async (Guid id, string? mode, IRouteService routes, CancellationToken ct) =>
+{
+    if (!TryParseMode(mode, out var travelMode))
+        return Results.BadRequest(new { error = $"unknown mode '{mode}' (expected drive|transit|walk|bike)" });
+
+    var leg = await routes.GetCommuteAsync(id, travelMode, ct);
+    return leg is null
+        ? Results.NotFound()       // no preceding placed event, unplaced endpoint, or no provider/cached leg.
+        : Results.Ok(new
+        {
+            fromEventId = leg.FromEventId,
+            toEventId = leg.ToEventId,
+            mode = leg.Mode.ToString().ToLowerInvariant(),
+            durationSec = leg.DurationSec,
+            leaveByUtc = leg.LeaveByUtc,
+            feasible = leg.Feasible,        // false ⇒ the planner's "you can't make it" conflict flag.
+            conflict = !leg.Feasible,
+            source = leg.Source,
+            geometry = leg.Geometry,
+            stale = leg.IsStale,
+        });
+});
+
 app.MapFallbackToFile("index.html");
 
 app.Run();
+
+// Parse the ?mode= query (default Drive) into the SDK TravelMode; unknown ⇒ 400.
+static bool TryParseMode(string? mode, out TravelMode travelMode)
+{
+    if (string.IsNullOrWhiteSpace(mode))
+    {
+        travelMode = TravelMode.Drive;
+        return true;
+    }
+    return Enum.TryParse(mode, ignoreCase: true, out travelMode) && Enum.IsDefined(travelMode);
+}
 
 internal record ConnectIcsRequest(string FeedUrl, string? Name, int? RefreshMinutes, string? ForceCategory);
 internal record VisibilityPatch(bool IsVisible);

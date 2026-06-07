@@ -65,4 +65,12 @@ public sealed class RouteLeg
 
     /// <summary>True when served as last-known after all providers failed.</summary>
     public bool IsStale { get; set; }
+
+    /// <summary>
+    /// Fingerprint of the routed inputs (both endpoints' rounded coordinates). When an endpoint's
+    /// <c>Place</c> moves this changes, so the cached leg is invalidated and re-routed
+    /// (geo-routing-plugin.md §5). Time changes don't touch <c>DurationSec</c> (OSRM is time-agnostic) — the
+    /// host re-derives <c>LeaveByUtc</c>/<c>Feasible</c> from current event times on every read instead.
+    /// </summary>
+    public string? InputHash { get; set; }
 }

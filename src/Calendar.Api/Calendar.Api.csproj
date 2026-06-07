@@ -58,6 +58,8 @@
   <ItemGroup>
     <StaticConnectorBundle Include="..\..\plugins\connectors\nominatim\**\*"
                            BundleId="geo-nominatim" SourceDir="..\..\plugins\connectors\nominatim" />
+    <StaticConnectorBundle Include="..\..\plugins\connectors\osrm\**\*"
+                           BundleId="geo-osrm" SourceDir="..\..\plugins\connectors\osrm" />
   </ItemGroup>
 
   <Target Name="CopyStaticConnectorBundles" AfterTargets="Build">

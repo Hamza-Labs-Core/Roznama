@@ -1,0 +1,36 @@
+id: org.unifiedcalendar.geo.osrm
+name: OSRM Routing
+version: 1.0.0
+sdkVersion: "1.x"
+kind: declarative
+openApi: openapi.yaml
+capabilities:
+  - geo.route
+# Self-host: AuthScheme.None, no key (geo-routing-plugin.md §3.1). OSRM is the free default for
+# drive/bike/walk — it has NO public-transit schedules and NO live traffic (the declarative
+# connector advertises RouteCoverage { Drive, Walk, Bike; no Transit }, so a Transit query fails
+# over to a transit-capable provider via the aggregator). The profile is fixed at data-prep time
+# (one dataset/container per profile); re-point the OpenAPI server + this allowlist at your own
+# instance. Geometry is a Google-format precision-5 polyline → straight into RouteResult.Geometry.
+auth:
+  scheme: none
+network:
+  allow:
+    - osrm.internal.example.com
+operations:
+  route:
+    call: GET /route/v1/driving/{coordinates}
+    # OSRM wants lon,lat;lon,lat (longitude FIRST), semicolon-separated (geo-routing-plugin.md §8).
+    path:
+      coordinates: "{q.from.lng & ',' & q.from.lat & ';' & q.to.lng & ',' & q.to.lat}"
+    query:
+      overview: "full"
+      geometries: "polyline"
+    # JSONata → RouteResult. The connector supplies DurationSec (+ Geometry) ONLY; the host forces
+    # LeaveByUtc=null and Feasible=true (they depend on the inter-event gap a provider can't see).
+    map: |
+      routes[0].{
+        "DurationSec": $round(duration),
+        "Geometry":    geometry,
+        "Source":      "osrm"
+      }

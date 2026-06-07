@@ -119,6 +119,9 @@
                 case CalendarView.MultiMonth:
                     <MultiMonthGrid Start="_month" Count="6" Events="_events" />
                     break;
+                case CalendarView.Map:
+                    <MapView WindowStart="_month.AddMonths(-1)" WindowDays="365" />
+                    break;
                 default:
                     <div class="placeholder">
                         <div class="placeholder__card">

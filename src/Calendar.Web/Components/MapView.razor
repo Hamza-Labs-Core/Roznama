@@ -1,0 +1,181 @@
+@implements IAsyncDisposable
+@inject CalendarApiClient Api
+@inject IJSRuntime JS
+
+@*
+    Map view (UI-WIREFRAMES §6, ARCHITECTURE §7). A MapLibre GL JS basemap with clustered event pins colored
+    by calendar, a date-range scrubber that refilters pins over time, and an empty state when nothing is
+    placed. The basemap style comes from GET /api/map/style (the selected geo.tiles provider or a bundled
+    default). JS interop lives in wwwroot/js/map.js; this component owns data + intent only.
+*@
+
+<div class="map-view" data-testid="map-view">
+    <header class="map-view__bar">
+        <span class="map-view__attribution" data-testid="map-attribution">@_attribution</span>
+        <span class="map-view__count" data-testid="map-pin-count">
+            @_visiblePins.Count pin@(_visiblePins.Count == 1 ? "" : "s")
+        </span>
+    </header>
+
+    <div class="map-view__canvas-wrap">
+        <div id="@_mapElementId" class="map-view__canvas" data-testid="map-canvas"></div>
+
+        @if (_loaded && _allPins.Count == 0)
+        {
+            <div class="map-view__empty" data-testid="map-empty">
+                <p class="map-view__empty-title">No placed events yet.</p>
+                <p class="map-view__empty-hint">
+                    Events get a pin once their location is geocoded. Connect a calendar with located
+                    events to see them here.
+                </p>
+            </div>
+        }
+    </div>
+
+    @* Date-range scrubber (§6): drag the two handles to reveal pins over time — pure client refilter. *@
+    <footer class="map-view__scrubber" data-testid="map-scrubber">
+        <label class="map-view__scrubber-label">From</label>
+        <input type="range" class="map-view__range" data-testid="map-scrubber-from"
+               min="0" max="@(_dayCount)" step="1" value="@_fromDay"
+               @oninput="OnFromChanged" aria-label="Range start day" />
+        <span class="map-view__scrubber-value">@DayLabel(_fromDay)</span>
+
+        <label class="map-view__scrubber-label">To</label>
+        <input type="range" class="map-view__range" data-testid="map-scrubber-to"
+               min="0" max="@(_dayCount)" step="1" value="@_toDay"
+               @oninput="OnToChanged" aria-label="Range end day" />
+        <span class="map-view__scrubber-value">@DayLabel(_toDay)</span>
+    </footer>
+</div>
+
+@code {
+    /// <summary>The window the Map view loads pins for (defaults to a year around the current month).</summary>
+    [Parameter] public DateOnly WindowStart { get; set; } = FirstOfThisMonth();
+
+    /// <summary>Number of days the loaded window spans (the scrubber slides within it).</summary>
+    [Parameter] public int WindowDays { get; set; } = 365;
+
+    // A stable per-instance element id so repeated Map opens don't collide in JS interop.
+    private readonly string _mapElementId = $"uc-map-{Guid.NewGuid():N}";
+
+    private IJSObjectReference? _module;
+    private DotNetObjectReference<MapView>? _selfRef;
+    private bool _initialized;
+    private bool _loaded;
+
+    private IReadOnlyList<MapEventDto> _allPins = Array.Empty<MapEventDto>();
+    private List<ScrubberPin> _visiblePins = new();
+    private string _attribution = "© OpenStreetMap contributors";
+
+    private int _dayCount;
+    private int _fromDay;
+    private int _toDay;
+
+    protected override void OnInitialized()
+    {
+        _dayCount = Math.Max(WindowDays, 1);
+        _fromDay = 0;
+        _toDay = _dayCount;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || _initialized)
+            return;
+        _initialized = true;
+
+        // Load data first so we can hand the style + pins to JS in one go.
+        var from = new DateTimeOffset(WindowStart.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero);
+        var to = new DateTimeOffset(WindowStart.AddDays(_dayCount).ToDateTime(TimeOnly.MinValue), TimeSpan.Zero);
+
+        var style = await Api.GetMapStyleAsync();
+        _attribution = string.IsNullOrWhiteSpace(style.Attribution)
+            ? "© OpenStreetMap contributors" : style.Attribution;
+        _allPins = await Api.GetMapEventsAsync(from, to);
+        _loaded = true;
+        StateHasChanged();
+
+        _module = await JS.InvokeAsync<IJSObjectReference>("import", "./js/map.js");
+        _selfRef = DotNetObjectReference.Create(this);
+
+        var descriptor = new
+        {
+            styleUrl = style.StyleUrl,
+            styleJson = style.StyleJson,
+            attribution = _attribution,
+            tileKind = style.TileKind,
+        };
+        await _module.InvokeVoidAsync("initMap", _mapElementId, descriptor, _selfRef);
+
+        await PushVisiblePinsAsync();
+    }
+
+    private async Task OnFromChanged(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var v))
+        {
+            _fromDay = Math.Clamp(v, 0, _toDay);
+            await PushVisiblePinsAsync();
+        }
+    }
+
+    private async Task OnToChanged(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var v))
+        {
+            _toDay = Math.Clamp(v, _fromDay, _dayCount);
+            await PushVisiblePinsAsync();
+        }
+    }
+
+    /// <summary>Refilter the loaded pins to the scrubbed window and push them to MapLibre as one setData.</summary>
+    private async Task PushVisiblePinsAsync()
+    {
+        var rangeStart = new DateTimeOffset(WindowStart.AddDays(_fromDay).ToDateTime(TimeOnly.MinValue), TimeSpan.Zero);
+        var rangeEnd = new DateTimeOffset(WindowStart.AddDays(_toDay).ToDateTime(TimeOnly.MaxValue), TimeSpan.Zero);
+
+        _visiblePins = _allPins
+            .Where(p => p.StartUtc < rangeEnd && p.EndUtc >= rangeStart)
+            .Select(p => new ScrubberPin(p.Id, p.Title, p.Lat, p.Lng, p.PlaceLabel, p.Color))
+            .ToList();
+
+        StateHasChanged();
+
+        if (_module is not null)
+            await _module.InvokeVoidAsync("setEvents", _mapElementId, _visiblePins);
+    }
+
+    /// <summary>JS calls back here when a pin is clicked so the host can show it in the Inspector (§4).</summary>
+    [JSInvokable]
+    public Task OnPinSelected(string eventId)
+    {
+        // Inspector wiring lands with the event-detail panel; for now this is a stable callback surface.
+        return Task.CompletedTask;
+    }
+
+    private string DayLabel(int day) => WindowStart.AddDays(day).ToString("MMM d");
+
+    private static DateOnly FirstOfThisMonth()
+    {
+        var today = DateOnly.FromDateTime(DateTime.Today);
+        return new DateOnly(today.Year, today.Month, 1);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        try
+        {
+            if (_module is not null)
+            {
+                await _module.InvokeVoidAsync("disposeMap", _mapElementId);
+                await _module.DisposeAsync();
+            }
+        }
+        catch (JSDisconnectedException) { /* circuit gone — nothing to release */ }
+        catch (Exception) { /* best-effort cleanup across view switches */ }
+        _selfRef?.Dispose();
+    }
+
+    /// <summary>The shape handed to map.js (lng/lat + the per-pin props the clustered source needs).</summary>
+    private sealed record ScrubberPin(Guid id, string title, double lat, double lng, string placeLabel, string? color);
+}

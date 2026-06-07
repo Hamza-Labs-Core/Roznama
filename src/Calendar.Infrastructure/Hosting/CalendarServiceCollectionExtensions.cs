@@ -30,6 +30,7 @@ public static class CalendarServiceCollectionExtensions
         services.AddScoped<IGeocodeService, GeocodeService>();
         services.AddScoped<IRouteService, RouteService>();
         services.AddScoped<IMapViewService, MapViewService>();
+        services.AddScoped<IMapStyleService, MapStyleService>();
         services.AddScoped<IAccountService, AccountService>();
         services.AddScoped<ICalendarCatalog, CalendarCatalog>();
 

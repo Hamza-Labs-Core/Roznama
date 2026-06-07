@@ -94,6 +94,22 @@ api.MapGet("/map/events", async (DateTimeOffset from, DateTimeOffset to, IMapVie
 api.MapGet("/places", async (IMapViewService map, CancellationToken ct) =>
     Results.Ok(await map.ListPlacesAsync(ct)));
 
+// ── Map basemap (geo-tiles-plugin.md §2): the resolved MapLibre StyleDescriptor for the selected
+//    geo.tiles provider, or a bundled default style if none is installed. Single chosen basemap — not
+//    aggregated. The browser feeds StyleUrl|StyleJson straight to MapLibre GL JS. ──
+api.MapGet("/map/style", async (IMapStyleService tiles, CancellationToken ct) =>
+{
+    var style = await tiles.GetStyleAsync(ct);
+    return Results.Ok(new
+    {
+        styleUrl = style.StyleUrl,
+        styleJson = style.StyleJson,
+        attribution = style.Attribution,
+        tileKind = style.TileKind,
+        supportsOffline = style.SupportsOffline,
+    });
+});
+
 // ── Commute (geo-routing-plugin.md §4): the host-computed RouteLeg for the leg arriving at this event ──
 api.MapGet("/events/{id:guid}/commute", async (Guid id, string? mode, IRouteService routes, CancellationToken ct) =>
 {

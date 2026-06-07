@@ -16,6 +16,18 @@ public sealed class CalendarApiClient
         return await _http.GetFromJsonAsync<List<EventDto>>(url, ct) ?? new List<EventDto>();
     }
 
+    /// <summary>Map pins: events with a resolved place overlapping [from, to) (ARCHITECTURE §7).</summary>
+    public async Task<IReadOnlyList<MapEventDto>> GetMapEventsAsync(DateTimeOffset from, DateTimeOffset to, CancellationToken ct = default)
+    {
+        var url = $"api/map/events?from={Iso(from)}&to={Iso(to)}";
+        return await _http.GetFromJsonAsync<List<MapEventDto>>(url, ct) ?? new List<MapEventDto>();
+    }
+
+    /// <summary>The resolved MapLibre basemap style (or a bundled default) for the Map view (geo-tiles §2).</summary>
+    public async Task<MapStyleDto> GetMapStyleAsync(CancellationToken ct = default) =>
+        await _http.GetFromJsonAsync<MapStyleDto>("api/map/style", ct)
+            ?? new MapStyleDto(null, null, "© OpenStreetMap contributors", "vector", false);
+
     public async Task<IReadOnlyList<AccountDto>> GetAccountsAsync(CancellationToken ct = default) =>
         await _http.GetFromJsonAsync<List<AccountDto>>("api/accounts", ct) ?? new List<AccountDto>();
 

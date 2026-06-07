@@ -21,6 +21,8 @@
                       ReferenceOutputAssembly="false" Private="false" BundleId="google" />
     <FirstPartyPlugin Include="..\..\plugins\Calendar.Plugin.Microsoft\Calendar.Plugin.Microsoft.csproj"
                       ReferenceOutputAssembly="false" Private="false" BundleId="microsoft" />
+    <FirstPartyPlugin Include="..\..\plugins\Calendar.Plugin.MapLibre\Calendar.Plugin.MapLibre.csproj"
+                      ReferenceOutputAssembly="false" Private="false" BundleId="maplibre" />
   </ItemGroup>
 
   <ItemGroup>

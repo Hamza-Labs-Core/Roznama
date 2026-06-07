@@ -238,6 +238,33 @@ html, body {
 .inspector__title { font-size: 0.95rem; margin: 0 0 12px; }
 .inspector__empty { font-size: 0.85rem; color: var(--muted); }
 
+/* ── Map view (UI-WIREFRAMES §6) — theme-aware via the shared CSS variables ── */
+.map-view { display: flex; flex-direction: column; height: 100%; min-height: 420px; }
+.map-view__bar {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 6px 12px; font-size: 0.8rem; color: var(--muted);
+    border-bottom: 1px solid var(--line); background: var(--panel-alt);
+}
+.map-view__count { font-variant-numeric: tabular-nums; }
+.map-view__canvas-wrap { position: relative; flex: 1 1 auto; min-height: 320px; }
+.map-view__canvas { position: absolute; inset: 0; background: var(--cell-muted); }
+.map-view__empty {
+    position: absolute; inset: 0; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; text-align: center;
+    padding: 24px; pointer-events: none; color: var(--muted);
+    background: color-mix(in srgb, var(--panel) 70%, transparent);
+}
+.map-view__empty-title { font-size: 1.0rem; font-weight: 600; color: var(--ink); margin: 0 0 6px; }
+.map-view__empty-hint { font-size: 0.85rem; margin: 0; max-width: 32ch; line-height: 1.5; }
+.map-view__scrubber {
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+    padding: 8px 12px; border-top: 1px solid var(--line); background: var(--panel-alt);
+    font-size: 0.8rem; color: var(--muted);
+}
+.map-view__scrubber-label { font-weight: 600; color: var(--ink); }
+.map-view__range { flex: 1 1 120px; accent-color: var(--accent); min-width: 80px; }
+.map-view__scrubber-value { font-variant-numeric: tabular-nums; min-width: 5ch; }
+
 @media (max-width: 900px) {
     .shell { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
     .shell__sidebar, .shell__inspector { display: none; }

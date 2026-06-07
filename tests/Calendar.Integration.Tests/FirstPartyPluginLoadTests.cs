@@ -23,6 +23,7 @@ public sealed class FirstPartyPluginLoadTests : IDisposable
         ("Calendar.Plugin.CalDav", "org.unifiedcalendar.caldav"),
         ("Calendar.Plugin.Google", "org.unifiedcalendar.google"),
         ("Calendar.Plugin.Microsoft", "org.unifiedcalendar.microsoft"),
+        ("Calendar.Plugin.MapLibre", "org.unifiedcalendar.tiles.maplibre"),
     };
 
     [Fact]
@@ -58,6 +59,19 @@ public sealed class FirstPartyPluginLoadTests : IDisposable
             Assert.True(reg.State == PluginState.Running,
                 $"plugin {id} is {reg.State}: {reg.FaultReason}");
         }
+
+        // The MapLibre geo.tiles plugin must resolve a renderable StyleDescriptor: with no styleUrl configured
+        // it returns the bundled default inline style (geo-tiles-plugin.md §10) with non-optional attribution.
+        Assert.True(registry.TryGet("org.unifiedcalendar.tiles.maplibre", out var tiles));
+        var provider = Assert.IsAssignableFrom<ITileProvider>(tiles.Instance.Plugin);
+        var style = await provider.GetStyleAsync(CancellationToken.None);
+
+        Assert.True(
+            !string.IsNullOrWhiteSpace(style.StyleUrl) ^ !string.IsNullOrWhiteSpace(style.StyleJson),
+            "exactly one of StyleUrl / StyleJson must be set");
+        Assert.False(string.IsNullOrWhiteSpace(style.StyleJson), "no styleUrl configured ⇒ inline bundled default");
+        Assert.Contains("OpenStreetMap", style.Attribution);
+        Assert.Contains("\"version\"", style.StyleJson);
     }
 
     private static void CopyBundle(string sourceDir, string destDir)

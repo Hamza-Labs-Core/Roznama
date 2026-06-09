@@ -1,6 +1,7 @@
 @page "/"
 @using Calendar.Web.Components
 @inject CalendarApiClient Api
+@inject NavigationManager Nav
 
 <PageTitle>Unified Calendar</PageTitle>
 
@@ -34,9 +35,56 @@
                 <button class="btn" @onclick="ConnectAsync" disabled="@(_busy || string.IsNullOrWhiteSpace(_feedUrl))">
                     @(_busy ? "Adding…" : "+ Add ICS feed")
                 </button>
+
+                @* OAuth providers (Google, Microsoft, …): one button each; the host returns a redirect
+                   challenge and the browser comes back via /api/accounts/oauth/callback (API.md). *@
+                @foreach (var plugin in OAuthProviders)
+                {
+                    <button class="btn add-account__provider" data-testid="connect-oauth-@plugin.Id"
+                            @onclick="() => ConnectOAuthAsync(plugin)" disabled="@_busy">
+                        Connect @plugin.Name
+                    </button>
+                }
+
+                @* CalDAV (iCloud / Fastmail / Nextcloud): server preset + username + app-specific password. *@
+                @if (CalDavPlugin is { } caldav)
+                {
+                    <button class="btn add-account__provider" data-testid="connect-caldav-toggle"
+                            @onclick="() => _calDavOpen = !_calDavOpen" disabled="@_busy">
+                        @(_calDavOpen ? "Cancel CalDAV" : $"Connect {caldav.Name}…")
+                    </button>
+                    @if (_calDavOpen)
+                    {
+                        <div class="add-account__caldav" data-testid="caldav-form">
+                            <select class="add-account__input" @bind="_calDavPreset" data-testid="caldav-preset">
+                                <option value="https://caldav.icloud.com">iCloud</option>
+                                <option value="https://caldav.fastmail.com/dav/">Fastmail</option>
+                                <option value="">Custom server…</option>
+                            </select>
+                            @if (string.IsNullOrEmpty(_calDavPreset))
+                            {
+                                <input class="add-account__input" placeholder="https://host/remote.php/dav/"
+                                       @bind="_calDavServer" @bind:event="oninput" />
+                            }
+                            <input class="add-account__input" placeholder="Username / Apple ID"
+                                   @bind="_calDavUser" @bind:event="oninput" data-testid="caldav-user" />
+                            <input class="add-account__input" type="password" placeholder="App-specific password"
+                                   @bind="_calDavPassword" @bind:event="oninput" data-testid="caldav-password" />
+                            <button class="btn" data-testid="caldav-connect" @onclick="() => ConnectCalDavAsync(caldav)"
+                                    disabled="@(_busy || !CanConnectCalDav)">
+                                @(_busy ? "Connecting…" : "Connect")
+                            </button>
+                        </div>
+                    }
+                }
+
                 @if (_error is not null)
                 {
                     <p class="add-account__error">@_error</p>
+                }
+                @if (_connectNotice is not null)
+                {
+                    <p class="add-account__notice" data-testid="connect-notice">@_connectNotice</p>
                 }
             </div>
         </section>
@@ -201,6 +249,28 @@
     private string _feedUrl = string.Empty;
     private bool _busy;
     private string? _error;
+    private string? _connectNotice;
+
+    // Generic connect (API.md "accounts — connect flow"): providers come from the installed-plugin list.
+    private IReadOnlyList<PluginDto> _plugins = Array.Empty<PluginDto>();
+    private bool _calDavOpen;
+    private string _calDavPreset = "https://caldav.icloud.com";
+    private string _calDavServer = string.Empty;
+    private string _calDavUser = string.Empty;
+    private string _calDavPassword = string.Empty;
+
+    private IEnumerable<PluginDto> OAuthProviders => _plugins.Where(p =>
+        p.State == "Running" && p.AuthScheme == "OAuth2Pkce" && p.Capabilities.Contains("calendar.read"));
+
+    private PluginDto? CalDavPlugin => _plugins.FirstOrDefault(p =>
+        p.State == "Running" && p.AuthScheme == "AppPassword" && p.Capabilities.Contains("calendar.read"));
+
+    private string CalDavServerUrl => string.IsNullOrEmpty(_calDavPreset) ? _calDavServer.Trim() : _calDavPreset;
+
+    private bool CanConnectCalDav =>
+        !string.IsNullOrWhiteSpace(CalDavServerUrl) &&
+        !string.IsNullOrWhiteSpace(_calDavUser) &&
+        !string.IsNullOrWhiteSpace(_calDavPassword);
 
     private OutboxStatusDto _outbox = new(0, 0, null);
 
@@ -221,15 +291,86 @@
 
     private bool HasWritableCalendar => _calendars.Any(c => !c.IsReadOnly);
 
-    protected override async Task OnInitializedAsync() => await ReloadAllAsync();
+    protected override async Task OnInitializedAsync()
+    {
+        ReadConnectNotice();
+        await ReloadAllAsync();
+    }
 
     private async Task ReloadAllAsync()
     {
         _accounts = await Api.GetAccountsAsync();
         _calendars = await Api.GetCalendarsAsync();
         _categories = await Api.GetCategoriesAsync();
+        try { _plugins = await Api.GetPluginsAsync(); } catch { /* providers list is progressive enhancement */ }
         await ReloadEventsAsync();
         await ReloadOutboxAsync();
+    }
+
+    // The OAuth callback redirects back with ?connect=ok|denied|failed (Program.cs callback route).
+    private void ReadConnectNotice()
+    {
+        var query = new Uri(Nav.Uri).Query;
+        if (query.Contains("connect=ok")) _connectNotice = "Account connected.";
+        else if (query.Contains("connect=denied")) _connectNotice = "Connect was cancelled.";
+        else if (query.Contains("connect=failed")) _error = "Connecting the account failed. Try again.";
+    }
+
+    private async Task ConnectOAuthAsync(PluginDto plugin)
+    {
+        _busy = true;
+        _error = null;
+        try
+        {
+            var result = await Api.ConnectAccountAsync(plugin.Id);
+            if (result?.AuthChallenge is { } challenge)
+                Nav.NavigateTo(challenge.RedirectUrl, forceLoad: true);  // off to the provider's consent page
+            else if (result is null)
+                _error = $"Could not start the {plugin.Name} connect (is an OAuth client configured?).";
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task ConnectCalDavAsync(PluginDto plugin)
+    {
+        _busy = true;
+        _error = null;
+        try
+        {
+            var config = new Dictionary<string, string>
+            {
+                ["serverUrl"] = CalDavServerUrl,
+                ["username"] = _calDavUser.Trim(),
+                ["password"] = _calDavPassword,
+            };
+            var result = await Api.ConnectAccountAsync(plugin.Id, name: null, config);
+            if (result?.Id is not null)
+            {
+                _calDavOpen = false;
+                _calDavUser = _calDavPassword = _calDavServer = string.Empty;
+                _connectNotice = "Account connected.";
+                await ReloadAllAsync();
+            }
+            else
+            {
+                _error = "Could not connect. Check the server URL, username, and app password.";
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
     }
 
     private async Task ReloadOutboxAsync()

@@ -62,7 +62,9 @@ Each phase ends with something you can run.
 - [x] Account priority ordering → dedup canonical selection.
 
 **Done when:** Google + Outlook/work sync incrementally and merge with ICS feeds and the map. ✅
-*(Live OAuth needs each provider's client id/secret in the vault — code complete, verified against stub token endpoints.)*
+*(Connect flow is live end-to-end — `POST /accounts` → authChallenge → shared OAuth callback, with "Connect
+Google/Microsoft" buttons in the sidebar. Going live needs each provider's client id in
+`OAuthClients:{pluginId}` config; verified against stub token endpoints.)*
 
 ## Phase 4 — CalDAV & iOS/iCloud
 **Goal:** open-standard + Apple accounts.
@@ -73,7 +75,8 @@ Each phase ends with something you can run.
 - [ ] (Optional) **EventKit iOS companion** plugin for device-local "On My iPhone" calendars.
 
 **Done when:** an iCloud/Nextcloud calendar appears alongside the rest. ✅
-*(Live CalDAV needs a server URL + app-specific password — code complete, verified against a stub WebDAV server.)*
+*(Connectable from the sidebar: preset/server URL + username + app-specific password; the password is
+AEAD-vaulted. Verified against a stub WebDAV server.)*
 
 ## Phase 5 — Travel: itineraries, stays & fares
 **Goal:** trip planning on the calendar and map.

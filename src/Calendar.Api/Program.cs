@@ -58,6 +58,7 @@ api.MapGet("/plugins", (IPluginRegistry registry) =>
         id = r.Id, name = r.Manifest.Name, version = r.Manifest.Version,
         kind = r.Manifest.Kind.ToString(), state = r.State.ToString(),
         capabilities = r.Manifest.Capabilities, faultReason = r.FaultReason,
+        authScheme = r.Manifest.Auth.Scheme.ToString(),   // drives the "Add account" UI per provider
     })));
 
 api.MapGet("/capabilities", (IPluginRegistry registry) =>
@@ -66,22 +67,80 @@ api.MapGet("/capabilities", (IPluginRegistry registry) =>
         capability = CapabilityIds.For(kvp.Key), plugins = kvp.Value,
     })));
 
-// ── Accounts (ICS connect — no OAuth) ──
+// ── Accounts (API.md "accounts — connect flow"). A bare feedUrl keeps the zero-OAuth ICS fast path;
+//    any other pluginId runs the manifest's declared auth scheme: scheme-none and credentialed plugins
+//    (CalDAV app-password, API keys) connect directly, OAuth plugins return an authChallenge the UI
+//    redirects to, finishing at the shared callback below. ──
 api.MapGet("/accounts", (IAccountService accounts, CancellationToken ct) => accounts.ListAsync(ct));
 
-api.MapPost("/accounts", async (ConnectIcsRequest req, IAccountService accounts, CancellationToken ct) =>
+api.MapPost("/accounts", async (
+    ConnectAccountBody req, IAccountService accounts, IAccountConnectService connect,
+    HttpRequest http, CancellationToken ct) =>
 {
-    if (string.IsNullOrWhiteSpace(req.FeedUrl))
-        return Results.BadRequest(new { error = "feedUrl is required" });
+    const string icsPluginId = "org.unifiedcalendar.ics";
+    if (!string.IsNullOrWhiteSpace(req.FeedUrl) &&
+        (string.IsNullOrWhiteSpace(req.PluginId) || req.PluginId == icsPluginId))
+    {
+        try
+        {
+            var id = await accounts.ConnectIcsAsync(
+                req.FeedUrl, req.Name, req.RefreshMinutes ?? 60, req.ForceCategory, ct);
+            return Results.Created($"/api/accounts/{id}", new { id });
+        }
+        catch (Exception ex)
+        {
+            return Results.Problem(title: "Could not connect feed", detail: ex.Message, statusCode: 502);
+        }
+    }
+
+    if (string.IsNullOrWhiteSpace(req.PluginId))
+        return Results.BadRequest(new { error = "pluginId (or feedUrl) is required" });
+
     try
     {
-        var id = await accounts.ConnectIcsAsync(
-            req.FeedUrl, req.Name, req.RefreshMinutes ?? 60, req.ForceCategory, ct);
-        return Results.Created($"/api/accounts/{id}", new { id });
+        var fallbackRedirect = $"{http.Scheme}://{http.Host}/api/accounts/oauth/callback";
+        var outcome = await connect.BeginConnectAsync(
+            new ConnectAccountRequest(req.PluginId, req.Name, req.Config), fallbackRedirect, ct);
+        return outcome.Challenge is { } challenge
+            ? Results.Ok(new
+            {
+                id = outcome.AccountId,
+                authChallenge = new { redirectUrl = challenge.RedirectUrl, state = challenge.State },
+            })
+            : Results.Created($"/api/accounts/{outcome.AccountId}", new { id = outcome.AccountId });
+    }
+    catch (ArgumentException ex)
+    {
+        return Results.BadRequest(new { error = ex.Message });
+    }
+    catch (InvalidOperationException ex)
+    {
+        return Results.BadRequest(new { error = ex.Message });
+    }
+});
+
+// One callback serves every OAuth provider: the opaque state routes to its pending connect. The browser
+// lands here from the provider, so respond with redirects back into the app shell, not JSON.
+api.MapGet("/accounts/oauth/callback", async (
+    string? state, string? code, string? error, IAccountConnectService connect, CancellationToken ct) =>
+{
+    if (string.IsNullOrEmpty(state))
+        return Results.BadRequest(new { error = "missing state" });
+
+    if (!string.IsNullOrEmpty(error) || string.IsNullOrEmpty(code))
+    {
+        await connect.CancelOAuthAsync(state, ct);
+        return Results.Redirect("/?connect=denied");
+    }
+
+    try
+    {
+        await connect.CompleteOAuthAsync(state, code, ct);
+        return Results.Redirect("/?connect=ok");
     }
     catch (Exception ex)
     {
-        return Results.Problem(title: "Could not connect feed", detail: ex.Message, statusCode: 502);
+        return Results.Redirect($"/?connect=failed&reason={Uri.EscapeDataString(ex.Message)}");
     }
 });
 
@@ -523,7 +582,11 @@ static object ToWriteResponse(EventWriteResult result) => new
     outboxId = result.OutboxId,
 };
 
-internal record ConnectIcsRequest(string FeedUrl, string? Name, int? RefreshMinutes, string? ForceCategory);
+/// <summary>The wire body for <c>POST /api/accounts</c>: a bare <c>feedUrl</c> is the ICS fast path; any
+/// other <c>pluginId</c> + <c>config</c> runs that plugin's declared auth scheme.</summary>
+internal record ConnectAccountBody(
+    string? PluginId, string? FeedUrl, string? Name, int? RefreshMinutes, string? ForceCategory,
+    Dictionary<string, string>? Config);
 internal record VisibilityPatch(bool IsVisible);
 
 internal record CreateEventBody(

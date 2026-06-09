@@ -22,7 +22,22 @@ public sealed record CalendarDto(Guid Id, Guid AccountId, string Name, string? C
 
 public sealed record CategoryDto(Guid Id, string Name, bool IsVisible, bool IsBuiltIn);
 
-public sealed record ConnectIcsRequest(string FeedUrl, string? Name, int? RefreshMinutes, string? ForceCategory);
+/// <summary>Body for <c>POST /api/accounts</c>: a bare <see cref="FeedUrl"/> is the zero-OAuth ICS path;
+/// otherwise <see cref="PluginId"/> + <see cref="Config"/> runs that plugin's declared auth scheme.</summary>
+public sealed record ConnectAccountBody(
+    string? PluginId, string? FeedUrl, string? Name, int? RefreshMinutes, string? ForceCategory,
+    Dictionary<string, string>? Config);
+
+/// <summary>The connect outcome: either a finished account or an OAuth redirect challenge.</summary>
+public sealed record ConnectAccountResult(Guid? Id, AuthChallengeDto? AuthChallenge);
+
+/// <summary>The provider redirect from an OAuth connect (<c>POST /api/accounts</c>).</summary>
+public sealed record AuthChallengeDto(string RedirectUrl, string State);
+
+/// <summary>An installed plugin from <c>GET /api/plugins</c>; <see cref="AuthScheme"/> drives the Add-account UI.</summary>
+public sealed record PluginDto(
+    string Id, string Name, string Version, string Kind, string State,
+    IReadOnlyList<string> Capabilities, string? FaultReason, string AuthScheme);
 
 /// <summary>A map pin from <c>GET /api/map/events</c>: an event with resolved coordinates (ARCHITECTURE §7).</summary>
 public sealed record MapEventDto(

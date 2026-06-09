@@ -35,6 +35,9 @@ public static class PluginAuthServiceCollectionExtensions
         services.AddSingleton<IAuthBrokerFactory, AuthBrokerFactory>();
         services.AddSingleton<IOAuthFlowService, OAuthFlowService>();
 
+        // Host-owned OAuth client registrations (PLUGIN-HOST.md §6.3): OAuthClients:{pluginId}:ClientId/….
+        services.AddSingleton<IOAuthClientRegistry, ConfigurationOAuthClientRegistry>();
+
         return services;
     }
 }

@@ -29,19 +29,22 @@ public sealed class PluginHostServicesFactory
     private readonly IPluginCache _cache;
     private readonly HttpClient _httpClient;
     private readonly ILoggerFactory _loggerFactory;
+    private readonly IOAuthClientRegistry? _oauthClients;
 
     public PluginHostServicesFactory(
         ISecretVault vault,
         IAuthBrokerFactory authBrokerFactory,
         IPluginCache cache,
         HttpClient httpClient,
-        ILoggerFactory loggerFactory)
+        ILoggerFactory loggerFactory,
+        IOAuthClientRegistry? oauthClients = null)
     {
         _vault = vault;
         _authBrokerFactory = authBrokerFactory;
         _cache = cache;
         _httpClient = httpClient;
         _loggerFactory = loggerFactory;
+        _oauthClients = oauthClients;
     }
 
     /// <summary>
@@ -56,8 +59,14 @@ public sealed class PluginHostServicesFactory
 
         var (secretRef, username) = ReadCredentialBinding(manifest.Auth.Scheme, configJson);
 
+        // OAuth schemes need the host's client registration to mint/refresh bearers; the redirect URI is
+        // irrelevant at runtime (only the connect flow uses it), so no fallback is passed here.
+        var oauthClient = manifest.Auth.Scheme is AuthScheme.OAuth2Pkce or AuthScheme.OAuth2ClientCredentials
+            ? _oauthClients?.Resolve(account.PluginId)
+            : null;
+
         var broker = _authBrokerFactory.Create(new CredentialContext(
-            account.Id, manifest.Auth, OAuthClient: null, SecretRef: secretRef, Username: username));
+            account.Id, manifest.Auth, oauthClient, SecretRef: secretRef, Username: username));
 
         return new PluginHostServices(
             _loggerFactory.CreateLogger($"Plugin.{account.PluginId}"),

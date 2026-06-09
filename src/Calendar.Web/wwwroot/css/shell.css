@@ -203,6 +203,9 @@ html, body {
     color: var(--ink);
 }
 .add-account__error { color: #d05050; font-size: 0.78rem; margin: 0; }
+.add-account__notice { color: #34a853; font-size: 0.78rem; margin: 0; }
+.add-account__provider { width: 100%; text-align: left; }
+.add-account__caldav { display: flex; flex-direction: column; gap: 6px; }
 
 .swatch { width: 10px; height: 10px; border-radius: 3px; display: inline-block; flex: 0 0 auto; }
 .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 4px; }

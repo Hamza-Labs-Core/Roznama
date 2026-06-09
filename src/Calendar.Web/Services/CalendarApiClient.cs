@@ -40,8 +40,27 @@ public sealed class CalendarApiClient
     public async Task<bool> ConnectIcsAsync(string feedUrl, string? name, CancellationToken ct = default)
     {
         var response = await _http.PostAsJsonAsync(
-            "api/accounts", new ConnectIcsRequest(feedUrl, name, RefreshMinutes: 60, ForceCategory: null), ct);
+            "api/accounts",
+            new ConnectAccountBody(null, feedUrl, name, RefreshMinutes: 60, ForceCategory: null, Config: null), ct);
         return response.IsSuccessStatusCode;
+    }
+
+    /// <summary>Installed plugins (<c>GET /api/plugins</c>) — the Add-account UI offers each running provider.</summary>
+    public async Task<IReadOnlyList<PluginDto>> GetPluginsAsync(CancellationToken ct = default) =>
+        await _http.GetFromJsonAsync<List<PluginDto>>("api/plugins", ct) ?? new List<PluginDto>();
+
+    /// <summary>
+    /// Generic connect (<c>POST /api/accounts</c>): scheme-none/credentialed plugins return a finished account;
+    /// OAuth plugins return an <see cref="AuthChallengeDto"/> the caller redirects the browser to.
+    /// </summary>
+    public async Task<ConnectAccountResult?> ConnectAccountAsync(
+        string pluginId, string? name = null, Dictionary<string, string>? config = null, CancellationToken ct = default)
+    {
+        var response = await _http.PostAsJsonAsync(
+            "api/accounts", new ConnectAccountBody(pluginId, null, name, null, null, config), ct);
+        if (!response.IsSuccessStatusCode)
+            return null;
+        return await response.Content.ReadFromJsonAsync<ConnectAccountResult>(ct);
     }
 
     public Task SetCalendarVisibilityAsync(Guid id, bool isVisible, CancellationToken ct = default) =>

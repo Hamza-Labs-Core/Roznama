@@ -32,6 +32,10 @@ builder.Services.Configure<SyncSchedulerOptions>(builder.Configuration.GetSectio
 builder.Services.Configure<CalendarSyncPollingOptions>(builder.Configuration.GetSection("CalendarSyncPolling"));
 builder.Services.AddHostedService<CalendarSyncPollingService>();
 
+// Reminder sweep (Phase 6 polish): fires due reminders into the in-app notification log.
+builder.Services.Configure<ReminderSweepOptions>(builder.Configuration.GetSection("ReminderSweep"));
+builder.Services.AddHostedService<ReminderSweepService>();
+
 var app = builder.Build();
 
 // Migrate + seed (device identity, built-in categories) on startup.
@@ -442,6 +446,65 @@ api.MapPost("/fares/watches/poll", async (IFareWatchService watches, Cancellatio
 api.MapGet("/notifications", async (int? limit, INotificationReader notifications, CancellationToken ct) =>
     Results.Ok(await notifications.ListAsync(limit ?? 100, ct)));
 
+// ── Reminders (Phase 6 polish): create against an event, fired by the hosted sweep into the same
+//    in-app notification log the panel reads. Manual sweep trigger for tests/clients. ──
+api.MapPost("/events/{id:guid}/reminders", async (Guid id, CreateReminderBody body, IReminderService reminders, CancellationToken ct) =>
+{
+    try
+    {
+        var dto = await reminders.CreateAsync(id, body.LeadMinutes, ct);
+        return dto is null ? Results.NotFound() : Results.Created($"/api/reminders/{dto.Id}", dto);
+    }
+    catch (ArgumentException ex)
+    {
+        return Results.BadRequest(new { error = ex.Message });
+    }
+});
+
+api.MapGet("/reminders", async (IReminderService reminders, CancellationToken ct) =>
+    Results.Ok(await reminders.ListAsync(ct)));
+
+api.MapDelete("/reminders/{id:guid}", async (Guid id, IReminderService reminders, CancellationToken ct) =>
+    await reminders.DeleteAsync(id, ct) ? Results.NoContent() : Results.NotFound());
+
+api.MapPost("/reminders/sweep", async (IReminderService reminders, CancellationToken ct) =>
+    Results.Ok(await reminders.SweepAsync(ct)));
+
+// ── Search (Phase 6 polish): substring match over title/location on visible calendars. ──
+api.MapGet("/search", async (string? q, int? limit, IEventSearchService search, CancellationToken ct) =>
+    string.IsNullOrWhiteSpace(q)
+        ? Results.BadRequest(new { error = "q is required" })
+        : Results.Ok(await search.SearchAsync(q, limit ?? 25, ct)));
+
+// ── Import / export (Phase 6 polish). Export reuses the share-feed ICS serializer over the projected
+//    stream; import parses a pasted/uploaded .ics into a local read-only snapshot calendar. ──
+api.MapGet("/export.ics", async (
+    DateTimeOffset? from, DateTimeOffset? to, Guid? calendarId,
+    IEventProjectionService projection, CancellationToken ct) =>
+{
+    var now = DateTimeOffset.UtcNow;
+    var events = await projection.GetEventsAsync(from ?? now.AddYears(-1), to ?? now.AddYears(1), ct);
+    if (calendarId is { } calId)
+        events = events.Where(e => e.CalendarId == calId).ToList();
+    var ics = ShareFeedSerializer.Serialize("Unified Calendar", ShareScope.FullDetails, events);
+    return Results.Text(ics, "text/calendar", System.Text.Encoding.UTF8);
+});
+
+api.MapPost("/import", async (ImportIcsBody body, IImportService import, CancellationToken ct) =>
+{
+    if (string.IsNullOrWhiteSpace(body.Ics))
+        return Results.BadRequest(new { error = "ics is required" });
+    try
+    {
+        var result = await import.ImportIcsAsync(body.Name, body.Ics, ct);
+        return Results.Created($"/api/calendars/{result.CalendarId}", result);
+    }
+    catch (ArgumentException ex)
+    {
+        return Results.BadRequest(new { error = ex.Message });
+    }
+});
+
 // ── Sharing — management (API.md sharing). Tokens are returned to the owner here only. ──
 api.MapGet("/shares", async (IShareService shares, HttpRequest http, CancellationToken ct) =>
     Results.Ok((await shares.ListAsync(ct)).Select(dto => ToShareResponse(dto, http))));
@@ -593,6 +656,8 @@ internal record ConnectAccountBody(
     string? PluginId, string? FeedUrl, string? Name, int? RefreshMinutes, string? ForceCategory,
     Dictionary<string, string>? Config);
 internal record VisibilityPatch(bool IsVisible);
+internal record CreateReminderBody(int LeadMinutes);
+internal record ImportIcsBody(string? Name, string Ics);
 
 internal record CreateEventBody(
     Guid CalendarId, string Title, DateTimeOffset StartUtc, DateTimeOffset EndUtc,

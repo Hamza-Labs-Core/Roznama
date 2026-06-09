@@ -44,6 +44,11 @@ public static class CalendarServiceCollectionExtensions
         services.AddScoped<ICalendarCatalog, CalendarCatalog>();
         services.AddScoped<IShareService, ShareService>();
 
+        // Phase 6 polish: reminders, one-shot ICS import, toolbar search.
+        services.AddScoped<IReminderService, ReminderService>();
+        services.AddScoped<IImportService, ImportService>();
+        services.AddScoped<IEventSearchService, EventSearchService>();
+
         // ── Fare watches + price history + notify-on-drop (ARCHITECTURE §14, travel-fares-plugin.md §10) ──
         // The in-app notifier is the persisted source of truth and also the read side; it is registered as both
         // an INotifier (the poll fans out to every notifier) and the INotificationReader the API reads from.

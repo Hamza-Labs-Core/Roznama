@@ -98,7 +98,9 @@ AEAD-vaulted. Verified against a stub WebDAV server.)*
 - [ ] **Optional E2E-encrypted cloud sync node** (multi-device + remote share relay).
 - [x] **Write-back** (`calendar.write`): create/edit/delete to CalDAV; offline `WriteOutbox` queue + replay.
 - [ ] **Plugin marketplace**: install signed plugins from URL/registry; out-of-process untrusted plugins.
-- [~] Notifications (fare-drop) + dark/light theming done. *Reminders, search refinements, import/export, full a11y pass — remaining.*
+- [x] Notifications (fare-drop + event **reminders** via the hosted sweep), **search** (`GET /search` +
+      toolbar box), **ICS import/export** (`POST /import` snapshot calendars, `GET /export.ics`),
+      dark/light theming. *Full a11y pass — remaining.*
 
 ---
 

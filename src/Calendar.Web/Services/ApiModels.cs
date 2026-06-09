@@ -50,6 +50,17 @@ public sealed record MapEventDto(
     string PlaceLabel,
     string? Color);
 
+/// <summary>One search hit from <c>GET /api/search</c> (Phase 6 polish).</summary>
+public sealed record SearchResultDto(
+    Guid Id,
+    Guid CalendarId,
+    string CalendarName,
+    string Title,
+    DateTimeOffset StartUtc,
+    DateTimeOffset EndUtc,
+    bool AllDay,
+    string? Location);
+
 /// <summary>A trip from <c>GET /api/map/trips</c>: ordered legs between Travel-category stops (Phase 5).</summary>
 public sealed record TripRouteDto(Guid TripId, string Name, IReadOnlyList<TripLegDto> Legs);
 

@@ -29,7 +29,7 @@ public enum OverrideKind { ForceMerge, NeverMerge, SetCanonical }
 public enum FareKind { Flight, Stay }
 
 /// <summary>Why a <see cref="Entities.NotificationLog"/> row was written (ARCHITECTURE §14, travel-fares-plugin.md §10).</summary>
-public enum NotificationKind { FareDrop, FareTarget }
+public enum NotificationKind { FareDrop, FareTarget, Reminder }
 
 /// <summary>Delivery state of a notification beyond the persisted in-app log (email/webhook are stubbed).</summary>
 public enum NotificationChannel { InApp, Email, Webhook }

@@ -207,6 +207,50 @@ html, body {
 .add-account__provider { width: 100%; text-align: left; }
 .add-account__caldav { display: flex; flex-direction: column; gap: 6px; }
 
+/* ── Toolbar search (Phase 6 polish) ── */
+.toolbar__search { position: relative; flex: 0 1 220px; }
+.toolbar__search-input {
+    width: 100%;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 6px 10px;
+    font-size: 0.82rem;
+    background: var(--panel);
+    color: var(--ink);
+}
+.toolbar__search-results {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    right: 0;
+    z-index: 40;
+    margin: 0;
+    padding: 4px;
+    list-style: none;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+    max-height: 320px;
+    overflow-y: auto;
+}
+.toolbar__search-hit {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    width: 100%;
+    text-align: left;
+    border: 0;
+    background: transparent;
+    color: var(--ink);
+    padding: 6px 8px;
+    border-radius: 6px;
+    cursor: pointer;
+}
+.toolbar__search-hit:hover { background: rgba(124, 77, 255, 0.12); }
+.toolbar__search-title { font-size: 0.82rem; font-weight: 600; }
+.toolbar__search-meta { font-size: 0.72rem; opacity: 0.7; }
+
 .swatch { width: 10px; height: 10px; border-radius: 3px; display: inline-block; flex: 0 0 auto; }
 .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 4px; }
 .dot--ok { background: #34a853; }

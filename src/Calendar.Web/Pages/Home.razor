@@ -157,6 +157,27 @@
                 <button class="btn" @onclick="Today">Today</button>
             </div>
 
+            <div class="toolbar__search" data-testid="search-box">
+                <input class="toolbar__search-input" placeholder="Search events…" data-testid="search-input"
+                       value="@_searchQuery" @oninput="OnSearchInput" />
+                @if (_searchResults.Count > 0)
+                {
+                    <ul class="toolbar__search-results" data-testid="search-results">
+                        @foreach (var hit in _searchResults)
+                        {
+                            <li>
+                                <button class="toolbar__search-hit" @onclick="() => JumpToAsync(hit)">
+                                    <span class="toolbar__search-title">@hit.Title</span>
+                                    <span class="toolbar__search-meta">
+                                        @hit.StartUtc.ToString("MMM d, yyyy") · @hit.CalendarName
+                                    </span>
+                                </button>
+                            </li>
+                        }
+                    </ul>
+                }
+            </div>
+
             <div class="toolbar__actions">
                 @if (_view == CalendarView.MultiMonth)
                 {
@@ -290,6 +311,27 @@
     private CalendarDto? _sharing;
 
     private bool HasWritableCalendar => _calendars.Any(c => !c.IsReadOnly);
+
+    // ── Toolbar search (Phase 6 polish): debounce-free substring search; pick a hit to jump the planner. ──
+    private string _searchQuery = string.Empty;
+    private IReadOnlyList<SearchResultDto> _searchResults = Array.Empty<SearchResultDto>();
+
+    private async Task OnSearchInput(ChangeEventArgs e)
+    {
+        _searchQuery = e.Value?.ToString() ?? string.Empty;
+        _searchResults = _searchQuery.Trim().Length >= 2
+            ? await Api.SearchEventsAsync(_searchQuery.Trim())
+            : Array.Empty<SearchResultDto>();
+    }
+
+    private async Task JumpToAsync(SearchResultDto hit)
+    {
+        _month = new DateOnly(hit.StartUtc.Year, hit.StartUtc.Month, 1);
+        _searchQuery = string.Empty;
+        _searchResults = Array.Empty<SearchResultDto>();
+        _view = CalendarView.Month;
+        await ReloadEventsAsync();
+    }
 
     protected override async Task OnInitializedAsync()
     {

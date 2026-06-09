@@ -37,6 +37,7 @@ public sealed class CalendarDbContext : DbContext
     public DbSet<NotificationLog> Notifications => Set<NotificationLog>();
     public DbSet<ScenarioDraft> ScenarioDrafts => Set<ScenarioDraft>();
     public DbSet<Share> Shares => Set<Share>();
+    public DbSet<Reminder> Reminders => Set<Reminder>();
     public DbSet<SyncState> SyncStates => Set<SyncState>();
     public DbSet<WriteOutbox> WriteOutbox => Set<WriteOutbox>();
     public DbSet<Device> Devices => Set<Device>();
@@ -233,6 +234,14 @@ public sealed class CalendarDbContext : DbContext
             e.HasOne<Trip>().WithMany().HasForeignKey(s => s.TripId).OnDelete(DeleteBehavior.SetNull);
             e.HasOne<Place>().WithMany().HasForeignKey(s => s.PlaceId).OnDelete(DeleteBehavior.SetNull);
             e.HasIndex(s => new { s.StartUtc, s.EndUtc }).HasDatabaseName("IX_ScenarioDraft_Time");
+        });
+
+        b.Entity<Reminder>(e =>
+        {
+            e.ToTable("Reminder");
+            e.HasKey(r => r.Id);
+            e.HasOne<Event>().WithMany().HasForeignKey(r => r.EventId).OnDelete(DeleteBehavior.Cascade);
+            e.HasIndex(r => new { r.FiredAtUtc, r.EventId }).HasDatabaseName("IX_Reminder_Fired_Event");
         });
 
         // 2.7 Sharing

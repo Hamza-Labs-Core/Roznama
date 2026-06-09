@@ -23,6 +23,20 @@ public sealed class CalendarApiClient
         return await _http.GetFromJsonAsync<List<MapEventDto>>(url, ct) ?? new List<MapEventDto>();
     }
 
+    /// <summary>Search stored events by title/location (<c>GET /api/search</c>, Phase 6 polish).</summary>
+    public async Task<IReadOnlyList<SearchResultDto>> SearchEventsAsync(string query, int limit = 25, CancellationToken ct = default)
+    {
+        try
+        {
+            var url = $"api/search?q={Uri.EscapeDataString(query)}&limit={limit}";
+            return await _http.GetFromJsonAsync<List<SearchResultDto>>(url, ct) ?? new List<SearchResultDto>();
+        }
+        catch (HttpRequestException)
+        {
+            return new List<SearchResultDto>();
+        }
+    }
+
     /// <summary>Trip routes overlapping [from, to) (<c>GET /api/map/trips</c>, Phase 5). Degrades to empty.</summary>
     public async Task<IReadOnlyList<TripRouteDto>> GetTripRoutesAsync(DateTimeOffset from, DateTimeOffset to, CancellationToken ct = default)
     {

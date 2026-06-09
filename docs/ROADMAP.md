@@ -85,9 +85,10 @@ AEAD-vaulted. Verified against a stub WebDAV server.)*
 - [x] **`flight.price` / `stay.price`** — **Duffel** (Flights + Stays) behind the aggregator. *Kiwi as a second source is a drop-in additional plugin.*
 - [x] Multi-month **cheapest-date** (flights) + **nightly-rate** (hotels) overlays.
 - [x] **Fare watches** + price history + notify on drops (in-app `NotificationLog`).
-- [ ] Trips drawn as **routes on the map**.
+- [x] Trips drawn as **routes on the map**: Travel-category stops → ordered legs (`GET /map/trips`),
+      road geometry via `geo.route` + the `RouteLeg` cache, dashed straight lines as the fallback.
 
-**Done when:** you plan a vacation across months, see prices and availability, and trips show on the map. ✅ *(prices/overlays/watches)*
+**Done when:** you plan a vacation across months, see prices and availability, and trips show on the map. ✅
 *(Live fares need a Duffel API token — code complete, verified against stubs; degrades to empty without a key.)*
 
 ## Phase 6 — Sharing, cloud sync & polish

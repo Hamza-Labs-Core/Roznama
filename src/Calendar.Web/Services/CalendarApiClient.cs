@@ -23,6 +23,20 @@ public sealed class CalendarApiClient
         return await _http.GetFromJsonAsync<List<MapEventDto>>(url, ct) ?? new List<MapEventDto>();
     }
 
+    /// <summary>Trip routes overlapping [from, to) (<c>GET /api/map/trips</c>, Phase 5). Degrades to empty.</summary>
+    public async Task<IReadOnlyList<TripRouteDto>> GetTripRoutesAsync(DateTimeOffset from, DateTimeOffset to, CancellationToken ct = default)
+    {
+        try
+        {
+            var url = $"api/map/trips?from={Iso(from)}&to={Iso(to)}";
+            return await _http.GetFromJsonAsync<List<TripRouteDto>>(url, ct) ?? new List<TripRouteDto>();
+        }
+        catch (HttpRequestException)
+        {
+            return new List<TripRouteDto>();    // trips are an overlay: a failure paints nothing, never breaks the map.
+        }
+    }
+
     /// <summary>The resolved MapLibre basemap style (or a bundled default) for the Map view (geo-tiles §2).</summary>
     public async Task<MapStyleDto> GetMapStyleAsync(CancellationToken ct = default) =>
         await _http.GetFromJsonAsync<MapStyleDto>("api/map/style", ct)

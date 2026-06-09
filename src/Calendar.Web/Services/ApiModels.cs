@@ -50,6 +50,24 @@ public sealed record MapEventDto(
     string PlaceLabel,
     string? Color);
 
+/// <summary>A trip from <c>GET /api/map/trips</c>: ordered legs between Travel-category stops (Phase 5).</summary>
+public sealed record TripRouteDto(Guid TripId, string Name, IReadOnlyList<TripLegDto> Legs);
+
+/// <summary>One trip leg; <see cref="Geometry"/> is an encoded polyline or null (⇒ draw a straight line).</summary>
+public sealed record TripLegDto(
+    Guid FromEventId,
+    Guid ToEventId,
+    string FromLabel,
+    string ToLabel,
+    double FromLat,
+    double FromLng,
+    double ToLat,
+    double ToLng,
+    DateTimeOffset DepartUtc,
+    DateTimeOffset ArriveUtc,
+    string? Geometry,
+    string? Source);
+
 /// <summary>
 /// The resolved MapLibre basemap from <c>GET /api/map/style</c> (geo-tiles-plugin.md §2). Exactly one of
 /// <see cref="StyleUrl"/> / <see cref="StyleJson"/> is set; the browser feeds it straight to MapLibre GL JS.

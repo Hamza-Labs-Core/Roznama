@@ -35,6 +35,7 @@ public static class CalendarServiceCollectionExtensions
         services.AddScoped<IGeocodeService, GeocodeService>();
         services.AddScoped<IRouteService, RouteService>();
         services.AddScoped<IMapViewService, MapViewService>();
+        services.AddScoped<ITripRouteService, TripRouteService>();
         services.AddScoped<IMapStyleService, MapStyleService>();
         services.AddScoped<IAccountService, AccountService>();
         // Generic connect (any plugin/auth scheme). The pending-OAuth map spans begin/callback requests.

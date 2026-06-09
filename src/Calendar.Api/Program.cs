@@ -259,6 +259,11 @@ api.MapGet("/map/events", async (DateTimeOffset from, DateTimeOffset to, IMapVie
 api.MapGet("/places", async (IMapViewService map, CancellationToken ct) =>
     Results.Ok(await map.ListPlacesAsync(ct)));
 
+// ── Trips as routes (ROADMAP Phase 5): Travel-category stops stitched into legs with cached road
+//    geometry where a geo.route provider covers them; null geometry ⇒ the client draws a straight line. ──
+api.MapGet("/map/trips", async (DateTimeOffset from, DateTimeOffset to, ITripRouteService trips, CancellationToken ct) =>
+    Results.Ok(await trips.GetTripRoutesAsync(from, to, ct)));
+
 // ── Map basemap (geo-tiles-plugin.md §2): the resolved MapLibre StyleDescriptor for the selected
 //    geo.tiles provider, or a bundled default style if none is installed. Single chosen basemap — not
 //    aggregated. The browser feeds StyleUrl|StyleJson straight to MapLibre GL JS. ──

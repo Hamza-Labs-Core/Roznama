@@ -38,6 +38,9 @@ public sealed class CalendarDbContext : DbContext
     public DbSet<ScenarioDraft> ScenarioDrafts => Set<ScenarioDraft>();
     public DbSet<Share> Shares => Set<Share>();
     public DbSet<Reminder> Reminders => Set<Reminder>();
+    public DbSet<CloudSyncConfig> CloudSyncConfigs => Set<CloudSyncConfig>();
+    public DbSet<RelaySpace> RelaySpaces => Set<RelaySpace>();
+    public DbSet<RelayBlob> RelayBlobs => Set<RelayBlob>();
     public DbSet<SyncState> SyncStates => Set<SyncState>();
     public DbSet<WriteOutbox> WriteOutbox => Set<WriteOutbox>();
     public DbSet<Device> Devices => Set<Device>();
@@ -242,6 +245,28 @@ public sealed class CalendarDbContext : DbContext
             e.HasKey(r => r.Id);
             e.HasOne<Event>().WithMany().HasForeignKey(r => r.EventId).OnDelete(DeleteBehavior.Cascade);
             e.HasIndex(r => new { r.FiredAtUtc, r.EventId }).HasDatabaseName("IX_Reminder_Fired_Event");
+        });
+
+        // Cloud sync (ADR-0003): the device's enrollment + the relay-side encrypted change feed.
+        b.Entity<CloudSyncConfig>(e =>
+        {
+            e.ToTable("CloudSyncConfig");
+            e.HasKey(c => c.Id);
+        });
+
+        b.Entity<RelaySpace>(e =>
+        {
+            e.ToTable("RelaySpace");
+            e.HasKey(s => s.Id);
+        });
+
+        b.Entity<RelayBlob>(e =>
+        {
+            e.ToTable("RelayBlob");
+            e.HasKey(r => r.Seq);
+            e.Property(r => r.Seq).ValueGeneratedOnAdd();
+            e.HasOne<RelaySpace>().WithMany().HasForeignKey(r => r.SpaceId).OnDelete(DeleteBehavior.Cascade);
+            e.HasIndex(r => new { r.SpaceId, r.Seq }).HasDatabaseName("IX_RelayBlob_Space_Seq");
         });
 
         // 2.7 Sharing

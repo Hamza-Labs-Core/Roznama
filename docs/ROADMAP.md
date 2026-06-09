@@ -95,7 +95,9 @@ AEAD-vaulted. Verified against a stub WebDAV server.)*
 **Goal:** collaboration, multi-device, and the long tail.
 
 - [x] **Sharing**: tokenized read-only ICS links, `FullDetails` vs `FreeBusy`, expiry/revocation.
-- [ ] **Optional E2E-encrypted cloud sync node** (multi-device + remote share relay).
+- [x] **Optional E2E-encrypted cloud sync node**: every host doubles as a token-gated `/relay/*` blob node;
+      devices push/pull AES-GCM change sets (PBKDF2 passphrase key, client-side) with LWW merge + tombstones.
+      Synced: accounts (sans credentials), calendars, categories, places, shares, fare watches.
 - [x] **Write-back** (`calendar.write`): create/edit/delete to CalDAV; offline `WriteOutbox` queue + replay.
 - [ ] **Plugin marketplace**: install signed plugins from URL/registry; out-of-process untrusted plugins.
 - [x] Notifications (fare-drop + event **reminders** via the hosted sweep), **search** (`GET /search` +

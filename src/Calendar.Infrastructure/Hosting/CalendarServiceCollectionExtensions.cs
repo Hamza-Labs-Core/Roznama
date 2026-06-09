@@ -49,6 +49,12 @@ public static class CalendarServiceCollectionExtensions
         services.AddScoped<IImportService, ImportService>();
         services.AddScoped<IEventSearchService, EventSearchService>();
 
+        // Optional E2E-encrypted cloud sync (ADR-0003): device engine + the self-hosted relay store.
+        services.AddSingleton<Calendar.Application.Cloud.IRelayClient>(
+            sp => new Cloud.HttpRelayClient(sp.GetRequiredService<HttpClient>()));
+        services.AddScoped<Calendar.Application.Cloud.IRelayStore, Cloud.RelayStore>();
+        services.AddScoped<Calendar.Application.Cloud.ICloudSyncService, Cloud.CloudSyncService>();
+
         // ── Fare watches + price history + notify-on-drop (ARCHITECTURE §14, travel-fares-plugin.md §10) ──
         // The in-app notifier is the persisted source of truth and also the read side; it is registered as both
         // an INotifier (the poll fans out to every notifier) and the INotificationReader the API reads from.

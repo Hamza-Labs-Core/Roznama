@@ -36,6 +36,11 @@ builder.Services.AddHostedService<CalendarSyncPollingService>();
 builder.Services.Configure<ReminderSweepOptions>(builder.Configuration.GetSection("ReminderSweep"));
 builder.Services.AddHostedService<ReminderSweepService>();
 
+// Cloud sync rounds (Phase 6, ADR-0003): periodic push+pull while an enrollment exists.
+builder.Services.Configure<Calendar.Infrastructure.Cloud.CloudSyncPollingOptions>(
+    builder.Configuration.GetSection("CloudSyncPolling"));
+builder.Services.AddHostedService<Calendar.Infrastructure.Cloud.CloudSyncPollingService>();
+
 var app = builder.Build();
 
 // Migrate + seed (device identity, built-in categories) on startup.
@@ -537,6 +542,78 @@ api.MapPost("/shares", async (CreateShareBody body, IShareService shares, HttpRe
 api.MapDelete("/shares/{id:guid}", async (Guid id, IShareService shares, CancellationToken ct) =>
     await shares.RevokeAsync(id, ct) ? Results.NoContent() : Results.NotFound());
 
+// ── Cloud sync (Phase 6, ADR-0003): enroll/disable/status + a manual sync round. The passphrase never
+//    persists — it derives the space key, which lives in the vault. ──
+api.MapPost("/cloud/enable", async (CloudEnableBody body, Calendar.Application.Cloud.ICloudSyncService cloud, CancellationToken ct) =>
+{
+    try
+    {
+        var result = await cloud.EnableAsync(body.Passphrase, body.RelayUrl, body.SpaceId, body.SpaceToken, ct);
+        return Results.Ok(new { spaceId = result.SpaceId, spaceToken = result.SpaceToken });
+    }
+    catch (ArgumentException ex)
+    {
+        return Results.BadRequest(new { error = ex.Message });
+    }
+    catch (HttpRequestException ex)
+    {
+        return Results.Problem(title: "Relay unreachable", detail: ex.Message, statusCode: 502);
+    }
+});
+
+api.MapPost("/cloud/disable", async (Calendar.Application.Cloud.ICloudSyncService cloud, CancellationToken ct) =>
+{
+    await cloud.DisableAsync(ct);
+    return Results.NoContent();
+});
+
+api.MapGet("/cloud/status", async (Calendar.Application.Cloud.ICloudSyncService cloud, CancellationToken ct) =>
+    Results.Ok(await cloud.GetStatusAsync(ct)));
+
+api.MapPost("/cloud/sync", async (Calendar.Application.Cloud.ICloudSyncService cloud, CancellationToken ct) =>
+{
+    try
+    {
+        return Results.Ok(await cloud.SyncAsync(ct));
+    }
+    catch (InvalidOperationException ex)
+    {
+        return Results.BadRequest(new { error = ex.Message });
+    }
+    catch (HttpRequestException ex)
+    {
+        return Results.Problem(title: "Relay unreachable", detail: ex.Message, statusCode: 502);
+    }
+});
+
+// ── Relay node (ADR-0003): every host doubles as a relay — append-ordered, token-gated, OPAQUE blobs.
+//    Outside /api like /share; the space token is the capability and blobs are E2E ciphertext. ──
+app.MapPost("/relay/spaces", async (Calendar.Application.Cloud.IRelayStore relay, CancellationToken ct) =>
+{
+    var (spaceId, token) = await relay.CreateSpaceAsync(ct);
+    return Results.Ok(new { spaceId, token });
+});
+
+app.MapPost("/relay/{spaceId:guid}/changes", async (
+    Guid spaceId, RelayPushBody body, HttpRequest http,
+    Calendar.Application.Cloud.IRelayStore relay, CancellationToken ct) =>
+{
+    if (!http.Headers.TryGetValue("X-Relay-Token", out var token) || string.IsNullOrEmpty(token))
+        return Results.Unauthorized();
+    var seq = await relay.AppendAsync(spaceId, token.ToString(), body.DeviceId, body.Payload, ct);
+    return seq is null ? Results.NotFound() : Results.Ok(new { seq });
+});
+
+app.MapGet("/relay/{spaceId:guid}/changes", async (
+    Guid spaceId, long? since, Guid? excludeDevice, HttpRequest http,
+    Calendar.Application.Cloud.IRelayStore relay, CancellationToken ct) =>
+{
+    if (!http.Headers.TryGetValue("X-Relay-Token", out var token) || string.IsNullOrEmpty(token))
+        return Results.Unauthorized();
+    var blobs = await relay.ReadAsync(spaceId, token.ToString(), since ?? 0, excludeDevice, ct);
+    return blobs is null ? Results.NotFound() : Results.Ok(blobs);
+});
+
 // ── Sharing — PUBLIC feed (ARCHITECTURE §16). Outside /api, no auth. Token is the capability. ──
 //    404 unknown/revoked · 410 expired · 200 text/calendar otherwise.
 app.MapGet("/share/{token}.ics", async (string token, IShareService shares, IEventProjectionService projection, CancellationToken ct) =>
@@ -658,6 +735,8 @@ internal record ConnectAccountBody(
 internal record VisibilityPatch(bool IsVisible);
 internal record CreateReminderBody(int LeadMinutes);
 internal record ImportIcsBody(string? Name, string Ics);
+internal record CloudEnableBody(string Passphrase, string RelayUrl, Guid? SpaceId, string? SpaceToken);
+internal record RelayPushBody(Guid DeviceId, byte[] Payload);
 
 internal record CreateEventBody(
     Guid CalendarId, string Title, DateTimeOffset StartUtc, DateTimeOffset EndUtc,

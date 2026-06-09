@@ -43,6 +43,9 @@ public sealed class SyncState
     public SyncRunState State { get; set; }
     public string? LastError { get; set; }
     public DateTimeOffset? BackoffUntilUtc { get; set; }
+
+    /// <summary>Consecutive failed sync attempts; drives the exponential backoff. Reset to 0 on success.</summary>
+    public int Attempts { get; set; }
     public string RowVersion { get; set; } = default!;
 }
 

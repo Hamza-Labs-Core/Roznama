@@ -56,8 +56,9 @@ Each phase ends with something you can run.
 - [x] **OAuth broker + encrypted token vault** (AES-GCM; PKCE, refresh, client-credentials).
 - [x] **Google plugin** (`calendar.read`, sync tokens, Holidays/Birthdays).
 - [x] **Microsoft Graph plugin** (delta, work/school).
-- [~] Background **sync engine**: sync runs on connect; a fare-watch poller exists. *A scheduled
-      calendar-sync engine with per-plugin backoff is the remaining piece.*
+- [x] Background **sync engine**: hosted sweep ticker + per-account cadence (`NextRunAtUtc`) and
+      exponential backoff (`BackoffUntilUtc`/`Attempts`); `GET /sync/status`, `POST /sync/run`,
+      `POST /accounts/{id}/sync`.
 - [x] Account priority ordering → dedup canonical selection.
 
 **Done when:** Google + Outlook/work sync incrementally and merge with ICS feeds and the map. ✅

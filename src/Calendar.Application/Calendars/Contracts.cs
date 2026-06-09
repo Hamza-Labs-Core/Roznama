@@ -36,6 +36,42 @@ public interface ICalendarSyncService
     Task<SyncSummary> SyncAccountAsync(Guid accountId, CancellationToken ct);
 }
 
+/// <summary>Outcome of one scheduler sweep over all syncable accounts.</summary>
+public sealed record SyncSweepSummary(int Accounts, int Synced, int Failed, int Skipped);
+
+/// <summary>One account's scheduling/health row (backs <c>GET /sync/status</c>).</summary>
+public sealed record SyncStatusDto(
+    Guid AccountId,
+    string DisplayName,
+    string PluginId,
+    string AccountStatus,
+    string State,
+    DateTimeOffset? LastSyncAtUtc,
+    DateTimeOffset? NextRunAtUtc,
+    DateTimeOffset? BackoffUntilUtc,
+    int Attempts,
+    string? LastError);
+
+/// <summary>
+/// The scheduled background sync engine (ROADMAP Phase 3): decides which accounts are due, runs them through
+/// <see cref="ICalendarSyncService"/>, and records the per-account cadence + exponential backoff in the
+/// account-level <c>SyncState</c> row (NextRunAtUtc / BackoffUntilUtc / Attempts).
+/// </summary>
+public interface ISyncScheduler
+{
+    /// <summary>One pass over all connected accounts; syncs the due ones. <paramref name="force"/> ignores due/backoff.</summary>
+    Task<SyncSweepSummary> SweepAsync(bool force, CancellationToken ct);
+
+    /// <summary>
+    /// Syncs one account immediately (ignores due/backoff) with full scheduler bookkeeping. Returns null when
+    /// the account doesn't exist; a failed sync records backoff and rethrows.
+    /// </summary>
+    Task<SyncSummary?> SyncNowAsync(Guid accountId, CancellationToken ct);
+
+    /// <summary>Per-account scheduling state for the UI/API (last sync, next run, backoff, last error).</summary>
+    Task<IReadOnlyList<SyncStatusDto>> GetStatusAsync(CancellationToken ct);
+}
+
 /// <summary>
 /// Projects the stored events for a window into render-ready instances: expands recurrence, applies the
 /// visibility pipeline, and collapses duplicates to their canonical (ARCHITECTURE §6, §12, §13).

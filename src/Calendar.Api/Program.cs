@@ -26,6 +26,12 @@ builder.Services.Configure<Calendar.Infrastructure.Fares.FareWatchPollingOptions
     builder.Configuration.GetSection("FareWatchPolling"));
 builder.Services.AddHostedService<Calendar.Infrastructure.Fares.FareWatchPollingService>();
 
+// Scheduled calendar-sync engine (ROADMAP Phase 3). The ticker is on by default (CalendarSyncPolling:Enabled
+// opts out); per-account cadence + exponential backoff live in SyncScheduler options / SyncState rows.
+builder.Services.Configure<SyncSchedulerOptions>(builder.Configuration.GetSection("SyncScheduler"));
+builder.Services.Configure<CalendarSyncPollingOptions>(builder.Configuration.GetSection("CalendarSyncPolling"));
+builder.Services.AddHostedService<CalendarSyncPollingService>();
+
 var app = builder.Build();
 
 // Migrate + seed (device identity, built-in categories) on startup.
@@ -164,6 +170,28 @@ api.MapGet("/sync/outbox", async (IWriteService writes, CancellationToken ct) =>
 
 api.MapPost("/sync/outbox/replay", async (IWriteService writes, CancellationToken ct) =>
     Results.Ok(await writes.ReplayAsync(ct)));
+
+// ── Scheduled sync engine (ROADMAP Phase 3). Per-account cadence/backoff/health + manual triggers; the
+//    hosted ticker runs the same sweep on an interval. ──
+api.MapGet("/sync/status", async (ISyncScheduler scheduler, CancellationToken ct) =>
+    Results.Ok(await scheduler.GetStatusAsync(ct)));
+
+api.MapPost("/sync/run", async (bool? force, ISyncScheduler scheduler, CancellationToken ct) =>
+    Results.Ok(await scheduler.SweepAsync(force ?? false, ct)));
+
+api.MapPost("/accounts/{id:guid}/sync", async (Guid id, ISyncScheduler scheduler, CancellationToken ct) =>
+{
+    try
+    {
+        var summary = await scheduler.SyncNowAsync(id, ct);
+        return summary is null ? Results.NotFound() : Results.Ok(summary);
+    }
+    catch (Exception ex)
+    {
+        // Backoff bookkeeping is already recorded; surface the provider failure to the caller.
+        return Results.Problem(title: "Sync failed", detail: ex.Message, statusCode: 502);
+    }
+});
 
 // ── Map (ARCHITECTURE §7): events with a resolved place (pins) + the place catalog ──
 api.MapGet("/map/events", async (DateTimeOffset from, DateTimeOffset to, IMapViewService map, CancellationToken ct) =>

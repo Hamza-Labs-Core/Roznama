@@ -76,6 +76,55 @@ api.MapGet("/capabilities", (IPluginRegistry registry) =>
         capability = CapabilityIds.For(kvp.Key), plugins = kvp.Value,
     })));
 
+// ── Marketplace (ROADMAP Phase 6): browse a registry index, install signed bundles, uninstall. ──
+api.MapGet("/marketplace", async (string? url, IMarketplaceService marketplace, IConfiguration cfg, CancellationToken ct) =>
+{
+    var registryUrl = url ?? cfg["Marketplace:RegistryUrl"];
+    if (string.IsNullOrWhiteSpace(registryUrl))
+        return Results.BadRequest(new { error = "no registry url (pass ?url= or configure Marketplace:RegistryUrl)" });
+    try
+    {
+        return Results.Ok(await marketplace.GetIndexAsync(registryUrl, ct));
+    }
+    catch (Exception ex) when (ex is HttpRequestException or System.Text.Json.JsonException)
+    {
+        return Results.Problem(title: "Registry unreachable or invalid", detail: ex.Message, statusCode: 502);
+    }
+});
+
+api.MapPost("/plugins/install", async (InstallPluginRequest body, IMarketplaceService marketplace, CancellationToken ct) =>
+{
+    try
+    {
+        var installed = await marketplace.InstallAsync(body, ct);
+        return Results.Created($"/api/plugins/{installed.Id}", installed);
+    }
+    catch (ArgumentException ex)
+    {
+        return Results.BadRequest(new { error = ex.Message });
+    }
+    catch (InvalidOperationException ex)
+    {
+        return Results.BadRequest(new { error = ex.Message });   // integrity/signature/trust gate failures
+    }
+    catch (HttpRequestException ex)
+    {
+        return Results.Problem(title: "Bundle download failed", detail: ex.Message, statusCode: 502);
+    }
+});
+
+api.MapDelete("/plugins/{id}", async (string id, IMarketplaceService marketplace, CancellationToken ct) =>
+{
+    try
+    {
+        return await marketplace.UninstallAsync(id, ct) ? Results.NoContent() : Results.NotFound();
+    }
+    catch (InvalidOperationException ex)
+    {
+        return Results.Conflict(new { error = ex.Message });     // accounts still bound to the plugin
+    }
+});
+
 // ── Accounts (API.md "accounts — connect flow"). A bare feedUrl keeps the zero-OAuth ICS fast path;
 //    any other pluginId runs the manifest's declared auth scheme: scheme-none and credentialed plugins
 //    (CalDAV app-password, API keys) connect directly, OAuth plugins return an authChallenge the UI

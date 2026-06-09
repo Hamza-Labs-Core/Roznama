@@ -71,11 +71,38 @@ public sealed class PluginHost
         }
     }
 
-    private async Task LoadBundleAsync(string bundleDir, HashSet<string> seenIds, CancellationToken ct)
+    /// <summary>
+    /// Hot-install one bundle directory (the marketplace path, PLUGIN-HOST.md §4.3): parse → validate →
+    /// load → register, replacing any prior registration for the same id (upgrade). Returns the resulting
+    /// registration (Running or Faulted), or null when the directory isn't a parsable bundle.
+    /// </summary>
+    public async Task<PluginRegistration?> InstallBundleAsync(string bundleDir, CancellationToken ct)
+    {
+        var id = await LoadBundleAsync(bundleDir, seenIds: null, ct).ConfigureAwait(false);
+        return id is not null && _registry.TryGet(id, out var registration) ? registration : null;
+    }
+
+    /// <summary>
+    /// Remove a plugin from the registry and unload its collectible ALC (best-effort, PLUGIN-HOST.md §4.4).
+    /// False when the id isn't registered.
+    /// </summary>
+    public bool Unload(string pluginId)
+    {
+        if (!_registry.TryGet(pluginId, out var registration))
+            return false;
+
+        _registry.Remove(pluginId);
+        if (registration.Instance is InProcPluginInstance inProc)
+            inProc.UnloadAlc();
+        _logger.LogInformation("Unloaded plugin {Id}.", pluginId);
+        return true;
+    }
+
+    private async Task<string?> LoadBundleAsync(string bundleDir, HashSet<string>? seenIds, CancellationToken ct)
     {
         var manifestPath = Path.Combine(bundleDir, "plugin.yaml");
         if (!File.Exists(manifestPath))
-            return; // not a bundle directory
+            return null; // not a bundle directory
 
         ManifestParseResult parsed;
         try
@@ -86,24 +113,25 @@ public sealed class PluginHost
         catch (ManifestFormatException ex)
         {
             _logger.LogWarning("Plugin at {Path} faulted: bad-manifest — {Detail}", manifestPath, ex.Message);
-            return; // cannot register without a manifest id
+            return null; // cannot register without a manifest id
         }
 
         var manifest = parsed.Manifest;
 
-        // Earlier directories win on id collisions — an in-box id cannot be shadowed.
-        if (!seenIds.Add(manifest.Id))
+        // Earlier directories win on id collisions during discovery — an in-box id cannot be shadowed.
+        // (Hot-install passes no seen-set: Register atomically replaces, which is the upgrade path.)
+        if (seenIds is not null && !seenIds.Add(manifest.Id))
         {
             _logger.LogWarning("Duplicate plugin id {Id} at {Path}; ignoring the shadowing bundle.",
                 manifest.Id, bundleDir);
-            return;
+            return null;
         }
 
         var validation = _validator.Validate(manifest);
         if (!validation.Ok)
         {
             RegisterFault(manifest, validation.Capabilities, validation.FaultReason!, validation.FaultDetail!);
-            return;
+            return manifest.Id;
         }
 
         var bundle = new PluginBundle(
@@ -129,7 +157,7 @@ public sealed class PluginHost
                     {
                         RegisterFault(manifest, validation.Capabilities, "capability-error",
                             $"declares {CapabilityIds.For(capability)} but does not implement {CapabilityInterfaces.For(capability).Name}");
-                        return;
+                        return manifest.Id;
                     }
                 }
 
@@ -146,6 +174,7 @@ public sealed class PluginHost
             RegisterFault(manifest, validation.Capabilities, "load-error", ex.Message);
             _logger.LogWarning(ex, "Plugin {Id} faulted during load.", manifest.Id);
         }
+        return manifest.Id;
     }
 
     private async Task InitializeAsync(PluginManifest manifest, IPlugin plugin, CancellationToken ct)

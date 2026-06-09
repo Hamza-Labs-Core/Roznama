@@ -24,6 +24,10 @@ public static class PluginHostServiceCollectionExtensions
         services.AddSingleton<IPluginRegistry, PluginRegistry>();
         services.AddSingleton<PluginHost>();
 
+        // Marketplace (ROADMAP Phase 6): install signed bundles from URL/registry, uninstall, trust gates.
+        services.Configure<MarketplaceOptions>(configuration.GetSection("Marketplace"));
+        services.AddScoped<IMarketplaceService, MarketplaceService>();
+
         services.AddHostedService<PluginHostBootstrap>();
         return services;
     }

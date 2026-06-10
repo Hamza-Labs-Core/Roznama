@@ -21,11 +21,13 @@ public sealed class ReminderService : IReminderService
 {
     private readonly CalendarDbContext _db;
     private readonly ILogger<ReminderService> _logger;
+    private readonly IChangeFeed? _feed;
 
-    public ReminderService(CalendarDbContext db, ILogger<ReminderService> logger)
+    public ReminderService(CalendarDbContext db, ILogger<ReminderService> logger, IChangeFeed? feed = null)
     {
         _db = db;
         _logger = logger;
+        _feed = feed;
     }
 
     public async Task<ReminderDto?> CreateAsync(Guid eventId, int leadMinutes, CancellationToken ct)
@@ -115,6 +117,8 @@ public sealed class ReminderService : IReminderService
             await _db.SaveChangesAsync(ct).ConfigureAwait(false);
             _logger.LogInformation("Reminder sweep: {Fired} fired, {Expired} expired.", fired, expired);
         }
+        if (fired > 0)
+            _feed?.Publish(ChangeEventTypes.NotificationsChanged, new { fired });
         return new ReminderSweepSummary(fired, expired);
     }
 }

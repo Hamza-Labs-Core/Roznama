@@ -17,6 +17,9 @@ public static class CalendarServiceCollectionExtensions
         // Shared, process-wide plugin snapshot cache (so ICS delta/diff survives across sync runs).
         services.AddSingleton<IPluginCache, InMemoryPluginCache>();
 
+        // Live-refresh pub/sub behind GET /sync/stream (UI.md §9): engines publish, SSE connections listen.
+        services.AddSingleton<IChangeFeed, ChangeFeed>();
+
         // One pooled HttpClient (decompression on) reused by the sync service for plugin fetches.
         services.AddSingleton(_ => new HttpClient(new HttpClientHandler
         {

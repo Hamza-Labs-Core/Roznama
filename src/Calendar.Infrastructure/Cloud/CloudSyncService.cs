@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text.Json;
 using Calendar.Application.Auth;
+using Calendar.Application.Calendars;
 using Calendar.Application.Cloud;
 using Calendar.Domain;
 using Calendar.Domain.Entities;
@@ -38,16 +39,18 @@ public sealed class CloudSyncService : ICloudSyncService
     private readonly IRelayClient _relay;
     private readonly DeviceProvider _device;
     private readonly ILogger<CloudSyncService> _logger;
+    private readonly IChangeFeed? _feed;
 
     public CloudSyncService(
         CalendarDbContext db, ITokenVault vault, IRelayClient relay, DeviceProvider device,
-        ILogger<CloudSyncService> logger)
+        ILogger<CloudSyncService> logger, IChangeFeed? feed = null)
     {
         _db = db;
         _vault = vault;
         _relay = relay;
         _device = device;
         _logger = logger;
+        _feed = feed;
     }
 
     public async Task<CloudEnableResult> EnableAsync(
@@ -140,6 +143,9 @@ public sealed class CloudSyncService : ICloudSyncService
             _logger.LogInformation(
                 "Cloud sync: {Pushed} rows pushed, {Blobs} blobs pulled, {Applied} rows applied.",
                 pushed, blobsPulled, applied);
+        // Applied user-state (calendar/category visibility, shares…) changes what views render.
+        if (applied > 0)
+            _feed?.Publish(ChangeEventTypes.EventsChanged, new { source = "cloud", applied });
         return new CloudSyncSummary(pushed, blobsPulled, applied);
     }
 

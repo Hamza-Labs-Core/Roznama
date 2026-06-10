@@ -1,7 +1,9 @@
 @page "/"
+@implements IAsyncDisposable
 @using Calendar.Web.Components
 @inject CalendarApiClient Api
 @inject NavigationManager Nav
+@inject IJSRuntime JS
 
 <PageTitle>Unified Calendar</PageTitle>
 
@@ -337,6 +339,61 @@
     {
         ReadConnectNotice();
         await ReloadAllAsync();
+    }
+
+    // ── Live refresh (UI.md §9): subscribe to GET /sync/stream; each named event reloads just enough. ──
+    private IJSObjectReference? _sseModule;
+    private DotNetObjectReference<Home>? _selfRef;
+    private int _sseConnectionId;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+            return;
+        try
+        {
+            _sseModule = await JS.InvokeAsync<IJSObjectReference>("import", "./js/sse.js");
+            _selfRef = DotNetObjectReference.Create(this);
+            _sseConnectionId = await _sseModule.InvokeAsync<int>("connect", _selfRef);
+        }
+        catch
+        {
+            // No SSE (test harness, prerender, old browser) — the app still works with manual reloads.
+        }
+    }
+
+    [JSInvokable]
+    public async Task OnServerEvent(string type, string json)
+    {
+        switch (type)
+        {
+            case "eventsChanged":
+                await ReloadEventsAsync();
+                _calendars = await Api.GetCalendarsAsync();   // a sync may have added calendars too.
+                break;
+            case "syncProgress":
+                _accounts = await Api.GetAccountsAsync();     // sidebar health (status / last-sync).
+                break;
+            case "notificationsChanged":
+                await ReloadOutboxAsync();
+                break;
+        }
+        StateHasChanged();
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        try
+        {
+            if (_sseModule is not null)
+            {
+                await _sseModule.InvokeVoidAsync("disconnect", _sseConnectionId);
+                await _sseModule.DisposeAsync();
+            }
+        }
+        catch (JSDisconnectedException) { /* circuit gone */ }
+        catch (Exception) { /* best-effort teardown */ }
+        _selfRef?.Dispose();
     }
 
     private async Task ReloadAllAsync()

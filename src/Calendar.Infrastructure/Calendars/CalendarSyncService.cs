@@ -27,11 +27,12 @@ public sealed class CalendarSyncService : ICalendarSyncService
     private readonly DeviceProvider _device;
     private readonly IGeocodeService _geocode;
     private readonly ILoggerFactory _loggerFactory;
+    private readonly IChangeFeed? _feed;
 
     public CalendarSyncService(
         CalendarDbContext db, IPluginRegistry registry, PluginHostServicesFactory hostFactory,
         DedupGrouper dedup, DeviceProvider device, IGeocodeService geocode,
-        ILoggerFactory loggerFactory)
+        ILoggerFactory loggerFactory, IChangeFeed? feed = null)
     {
         _db = db;
         _registry = registry;
@@ -40,6 +41,7 @@ public sealed class CalendarSyncService : ICalendarSyncService
         _device = device;
         _geocode = geocode;
         _loggerFactory = loggerFactory;
+        _feed = feed;
     }
 
     public async Task<SyncSummary> SyncAccountAsync(Guid accountId, CancellationToken ct)
@@ -116,6 +118,10 @@ public sealed class CalendarSyncService : ICalendarSyncService
         await _db.SaveChangesAsync(ct).ConfigureAwait(false);
 
         await _dedup.RegroupAsync(ct).ConfigureAwait(false);
+
+        // Live refresh (UI.md §9): a delta that changed the stored set tells open UIs to re-project.
+        if (totalUpserts + totalDeletes > 0)
+            _feed?.Publish(ChangeEventTypes.EventsChanged, new { source = "sync", accountId });
 
         return new SyncSummary(remoteCalendars.Count, totalUpserts, totalDeletes);
     }

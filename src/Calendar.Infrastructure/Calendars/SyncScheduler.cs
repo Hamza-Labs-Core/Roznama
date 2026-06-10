@@ -24,16 +24,18 @@ public sealed class SyncScheduler : ISyncScheduler
     private readonly DeviceProvider _device;
     private readonly SyncSchedulerOptions _options;
     private readonly ILogger<SyncScheduler> _logger;
+    private readonly IChangeFeed? _feed;
 
     public SyncScheduler(
         CalendarDbContext db, ICalendarSyncService sync, DeviceProvider device,
-        IOptions<SyncSchedulerOptions> options, ILogger<SyncScheduler> logger)
+        IOptions<SyncSchedulerOptions> options, ILogger<SyncScheduler> logger, IChangeFeed? feed = null)
     {
         _db = db;
         _sync = sync;
         _device = device;
         _options = options.Value;
         _logger = logger;
+        _feed = feed;
     }
 
     public async Task<SyncSweepSummary> SweepAsync(bool force, CancellationToken ct)
@@ -124,6 +126,7 @@ public sealed class SyncScheduler : ISyncScheduler
         state.State = SyncRunState.Running;
         Touch(state);
         await _db.SaveChangesAsync(ct).ConfigureAwait(false);
+        _feed?.Publish(ChangeEventTypes.SyncProgress, new { accountId, state = nameof(SyncRunState.Running) });
 
         try
         {
@@ -143,6 +146,7 @@ public sealed class SyncScheduler : ISyncScheduler
             _logger.LogInformation(
                 "Synced account {AccountId}: {Calendars} calendars, {Upserts} upserts, {Deletes} deletes; next run {NextRun}.",
                 accountId, summary.Calendars, summary.Upserts, summary.Deletes, state.NextRunAtUtc);
+            _feed?.Publish(ChangeEventTypes.SyncProgress, new { accountId, state = nameof(SyncRunState.Idle) });
             return summary;
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
@@ -177,6 +181,8 @@ public sealed class SyncScheduler : ISyncScheduler
             _logger.LogWarning(
                 ex, "Sync failed for account {AccountId} (attempt {Attempts}); backing off until {BackoffUntil}.",
                 accountId, fresh.Attempts, fresh.BackoffUntilUtc);
+            _feed?.Publish(ChangeEventTypes.SyncProgress,
+                new { accountId, state = nameof(SyncRunState.Backoff), attempts = fresh.Attempts });
             throw;
         }
     }

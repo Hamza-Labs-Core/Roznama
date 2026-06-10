@@ -220,13 +220,14 @@ api.MapGet("/events", async (DateTimeOffset from, DateTimeOffset to, IEventProje
 
 // ── Event write-back (ARCHITECTURE §8/§10; SDK-CONTRACT §4.write). calendar.write only; read-only → 409.
 //    A write reflects locally (UI updates) and pushes to the bound plugin, or queues offline. ──
-api.MapPost("/events", async (CreateEventBody body, IWriteService writes, CancellationToken ct) =>
+api.MapPost("/events", async (CreateEventBody body, IWriteService writes, IChangeFeed feed, CancellationToken ct) =>
 {
     if (body.CalendarId == Guid.Empty)
         return Results.BadRequest(new { error = "calendarId is required" });
     try
     {
         var result = await writes.CreateEventAsync(body.CalendarId, body.ToRequest(), ct);
+        feed.Publish(ChangeEventTypes.EventsChanged, new { source = "write" });
         return Results.Created($"/api/events/{result.EventId}", ToWriteResponse(result));
     }
     catch (ReadOnlyCalendarException ex)
@@ -239,11 +240,12 @@ api.MapPost("/events", async (CreateEventBody body, IWriteService writes, Cancel
     }
 });
 
-api.MapPatch("/events/{id:guid}", async (Guid id, UpdateEventBody body, IWriteService writes, CancellationToken ct) =>
+api.MapPatch("/events/{id:guid}", async (Guid id, UpdateEventBody body, IWriteService writes, IChangeFeed feed, CancellationToken ct) =>
 {
     try
     {
         var result = await writes.UpdateEventAsync(id, body.ToRequest(), ct);
+        feed.Publish(ChangeEventTypes.EventsChanged, new { source = "write" });
         return Results.Ok(ToWriteResponse(result));
     }
     catch (ConcurrencyConflictException ex)
@@ -260,11 +262,12 @@ api.MapPatch("/events/{id:guid}", async (Guid id, UpdateEventBody body, IWriteSe
     }
 });
 
-api.MapDelete("/events/{id:guid}", async (Guid id, IWriteService writes, CancellationToken ct) =>
+api.MapDelete("/events/{id:guid}", async (Guid id, IWriteService writes, IChangeFeed feed, CancellationToken ct) =>
 {
     try
     {
         var result = await writes.DeleteEventAsync(id, ct);
+        feed.Publish(ChangeEventTypes.EventsChanged, new { source = "write" });
         return Results.Ok(ToWriteResponse(result));
     }
     catch (ConcurrencyConflictException ex)
@@ -287,6 +290,30 @@ api.MapGet("/sync/outbox", async (IWriteService writes, CancellationToken ct) =>
 
 api.MapPost("/sync/outbox/replay", async (IWriteService writes, CancellationToken ct) =>
     Results.Ok(await writes.ReplayAsync(ct)));
+
+// ── Live refresh (API.md "GET /sync/stream", UI.md §9): server-sent events. Background engines publish
+//    eventsChanged / syncProgress / notificationsChanged; the browser EventSource reloads on each. ──
+api.MapGet("/sync/stream", async (HttpContext ctx, IChangeFeed feed) =>
+{
+    var ct = ctx.RequestAborted;
+    ctx.Response.Headers.Append("Content-Type", "text/event-stream");
+    ctx.Response.Headers.Append("Cache-Control", "no-cache");
+    await ctx.Response.WriteAsync(": connected\n\n", ct);
+    await ctx.Response.Body.FlushAsync(ct);
+
+    try
+    {
+        await foreach (var ev in feed.ListenAsync(ct))
+        {
+            await ctx.Response.WriteAsync($"event: {ev.Type}\ndata: {ev.Json}\n\n", ct);
+            await ctx.Response.Body.FlushAsync(ct);
+        }
+    }
+    catch (OperationCanceledException)
+    {
+        // client closed the tab — normal SSE teardown.
+    }
+});
 
 // ── Scheduled sync engine (ROADMAP Phase 3). Per-account cadence/backoff/health + manual triggers; the
 //    hosted ticker runs the same sweep on an interval. ──
@@ -544,13 +571,14 @@ api.MapGet("/export.ics", async (
     return Results.Text(ics, "text/calendar", System.Text.Encoding.UTF8);
 });
 
-api.MapPost("/import", async (ImportIcsBody body, IImportService import, CancellationToken ct) =>
+api.MapPost("/import", async (ImportIcsBody body, IImportService import, IChangeFeed feed, CancellationToken ct) =>
 {
     if (string.IsNullOrWhiteSpace(body.Ics))
         return Results.BadRequest(new { error = "ics is required" });
     try
     {
         var result = await import.ImportIcsAsync(body.Name, body.Ics, ct);
+        feed.Publish(ChangeEventTypes.EventsChanged, new { source = "import" });
         return Results.Created($"/api/calendars/{result.CalendarId}", result);
     }
     catch (ArgumentException ex)

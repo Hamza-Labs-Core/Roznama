@@ -70,6 +70,23 @@ api.MapGet("/plugins", (IPluginRegistry registry) =>
         authScheme = r.Manifest.Auth.Scheme.ToString(),   // drives the "Add account" UI per provider
     })));
 
+// One plugin incl. its config JSON Schema — what the UI renders as the dynamic connect/settings form
+// (API.md "Plugins & capabilities"; PLUGINS.md §9).
+api.MapGet("/plugins/{id}", (string id, IPluginRegistry registry) =>
+{
+    if (!registry.TryGet(id, out var r))
+        return Results.NotFound();
+    return Results.Ok(new
+    {
+        id = r.Id, name = r.Manifest.Name, version = r.Manifest.Version,
+        kind = r.Manifest.Kind.ToString(), state = r.State.ToString(),
+        capabilities = r.Manifest.Capabilities, faultReason = r.FaultReason,
+        authScheme = r.Manifest.Auth.Scheme.ToString(),
+        configSchema = r.Manifest.Config.JsonSchema,
+        configRequired = r.Manifest.Config.Required,
+    });
+});
+
 api.MapGet("/capabilities", (IPluginRegistry registry) =>
     Results.Ok(registry.Snapshot().Select(kvp => new
     {
@@ -163,7 +180,7 @@ api.MapPost("/accounts", async (
             ? Results.Ok(new
             {
                 id = outcome.AccountId,
-                authChallenge = new { redirectUrl = challenge.RedirectUrl, state = challenge.State },
+                authChallenge = new { kind = "oauth2", redirectUrl = challenge.RedirectUrl, state = challenge.State },
             })
             : Results.Created($"/api/accounts/{outcome.AccountId}", new { id = outcome.AccountId });
     }

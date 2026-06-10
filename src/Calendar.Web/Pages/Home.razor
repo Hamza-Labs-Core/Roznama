@@ -10,7 +10,7 @@
 <div class="shell">
 
     @* ── Sidebar: Accounts / Calendars / Categories (UI-WIREFRAMES §1) ── *@
-    <aside class="shell__sidebar">
+    <aside class="shell__sidebar" aria-label="Accounts, calendars, and categories">
         <div class="brand">◷ Unified Calendar</div>
 
         <section class="sidebar-group">
@@ -82,11 +82,11 @@
 
                 @if (_error is not null)
                 {
-                    <p class="add-account__error">@_error</p>
+                    <p class="add-account__error" role="alert">@_error</p>
                 }
                 @if (_connectNotice is not null)
                 {
-                    <p class="add-account__notice" data-testid="connect-notice">@_connectNotice</p>
+                    <p class="add-account__notice" data-testid="connect-notice" role="status">@_connectNotice</p>
                 }
             </div>
         </section>
@@ -161,12 +161,12 @@
                 <button class="btn" @onclick="Today">Today</button>
             </div>
 
-            <div class="toolbar__search" data-testid="search-box">
+            <div class="toolbar__search" data-testid="search-box" role="search">
                 <input class="toolbar__search-input" placeholder="Search events…" data-testid="search-input"
-                       value="@_searchQuery" @oninput="OnSearchInput" />
+                       aria-label="Search events" value="@_searchQuery" @oninput="OnSearchInput" />
                 @if (_searchResults.Count > 0)
                 {
-                    <ul class="toolbar__search-results" data-testid="search-results">
+                    <ul class="toolbar__search-results" data-testid="search-results" aria-label="Search results">
                         @foreach (var hit in _searchResults)
                         {
                             <li>
@@ -243,7 +243,7 @@
     </main>
 
     @* ── Inspector ── *@
-    <aside class="shell__inspector">
+    <aside class="shell__inspector" aria-label="Inspector">
         <h2 class="inspector__title">Inspector</h2>
         <p class="inspector__empty">Select an event, trip, or place to see details, travel time, and prices here.</p>
         <FareWatchPanel />

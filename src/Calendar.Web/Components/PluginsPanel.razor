@@ -53,11 +53,11 @@
 
     @if (_notice is not null)
     {
-        <p class="add-account__notice" data-testid="plugin-notice">@_notice</p>
+        <p class="add-account__notice" data-testid="plugin-notice" role="status">@_notice</p>
     }
     @if (_error is not null)
     {
-        <p class="add-account__error" data-testid="plugin-error">@_error</p>
+        <p class="add-account__error" data-testid="plugin-error" role="alert">@_error</p>
     }
 </section>
 

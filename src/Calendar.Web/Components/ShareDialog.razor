@@ -9,7 +9,7 @@
     the owner here only.
 *@
 
-<div class="modal-backdrop" data-testid="share-dialog" @onclick="Close">
+<div class="modal-backdrop" data-testid="share-dialog" @onclick="Close" @onkeydown="OnModalKey">
     <div class="modal modal--share" @onclick:stopPropagation="true" role="dialog" aria-modal="true" aria-label="Share calendar">
         <header class="modal__head">
             <h2 class="modal__title">Share @CalendarName</h2>
@@ -173,6 +173,10 @@
     }
 
     private Task Close() => OnClose.InvokeAsync();
+
+    /// <summary>Escape dismisses the dialog from anywhere inside it (a11y pass; UI-WIREFRAMES §7).</summary>
+    private Task OnModalKey(KeyboardEventArgs e) =>
+        e.Key == "Escape" ? Close() : Task.CompletedTask;
 
     private static string ScopeLabel(string scope) =>
         scope.Equals("FreeBusy", StringComparison.OrdinalIgnoreCase) ? "Free / busy" : "Full details";

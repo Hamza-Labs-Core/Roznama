@@ -48,7 +48,10 @@
                         <div class="chip @(OnEventClick.HasDelegate ? "chip--clickable" : "")"
                              style="border-left-color:@Color(ev)" title="@ChipTitle(ev)"
                              role="@(OnEventClick.HasDelegate ? "button" : null)"
-                             @onclick="() => OnEventClick.InvokeAsync(ev)">
+                             tabindex="@(OnEventClick.HasDelegate ? "0" : null)"
+                             aria-label="@(OnEventClick.HasDelegate ? ChipAria(ev) : null)"
+                             @onclick="() => OnEventClick.InvokeAsync(ev)"
+                             @onkeydown="e => OnChipKeyAsync(e, ev)">
                             <span class="chip__title">@ev.Title</span>
                             @if (ev.DuplicateCount > 0)
                             {
@@ -192,6 +195,21 @@
 
     private static string ChipTitle(EventDto e) =>
         string.IsNullOrWhiteSpace(e.Location) ? e.Title : $"{e.Title} · {e.Location}";
+
+    /// <summary>What a screen reader announces for a focusable chip: title, when, where (a11y pass).</summary>
+    private static string ChipAria(EventDto e)
+    {
+        var when = e.AllDay ? e.StartUtc.ToString("MMMM d") : e.StartUtc.ToString("MMMM d, HH:mm");
+        return string.IsNullOrWhiteSpace(e.Location)
+            ? $"{e.Title}, {when}. Open in editor."
+            : $"{e.Title}, {when}, {e.Location}. Open in editor.";
+    }
+
+    /// <summary>Keyboard activation for chips (Enter/Space), matching their button role (a11y pass).</summary>
+    private Task OnChipKeyAsync(KeyboardEventArgs e, EventDto ev) =>
+        OnEventClick.HasDelegate && e.Key is "Enter" or " "
+            ? OnEventClick.InvokeAsync(ev)
+            : Task.CompletedTask;
 
     private static IReadOnlyList<Cell> BuildCells(DateOnly month)
     {

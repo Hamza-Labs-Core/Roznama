@@ -256,6 +256,14 @@ html, body {
 .dot--ok { background: #34a853; }
 .dot--bad { background: #d05050; }
 
+/* ── A11y: a clear keyboard-focus ring on interactive chips and controls ── */
+.chip--clickable:focus-visible,
+.toolbar__search-hit:focus-visible,
+.btn:focus-visible {
+    outline: 2px solid #3b6ef5;
+    outline-offset: 1px;
+}
+
 /* ── Plugins panel (marketplace) ── */
 .plugins-panel__row { display: flex; align-items: center; gap: 6px; }
 .plugins-panel__name { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

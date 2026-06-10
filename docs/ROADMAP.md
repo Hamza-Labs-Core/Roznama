@@ -105,7 +105,8 @@ AEAD-vaulted. Verified against a stub WebDAV server.)*
       *Out-of-process sandbox for untrusted plugins — still deferred per ADR-0007 §8.4.*
 - [x] Notifications (fare-drop + event **reminders** via the hosted sweep), **search** (`GET /search` +
       toolbar box), **ICS import/export** (`POST /import` snapshot calendars, `GET /export.ics`),
-      dark/light theming. *Full a11y pass — remaining.*
+      dark/light theming, **a11y pass** (keyboard-operable chips, Escape-to-close + labelled dialogs,
+      landmark/search labels, live error/status regions, focus rings).
 
 ---
 

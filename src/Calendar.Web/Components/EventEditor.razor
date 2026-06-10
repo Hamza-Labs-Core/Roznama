@@ -85,6 +85,38 @@
                            placeholder="Optional" disabled="@_busy" />
                 </label>
 
+                @if (IsEdit)
+                {
+                    @* Reminders (Phase 6 polish): fire into the in-app notification log before the event. *@
+                    <div class="field" data-testid="editor-reminders">
+                        <span class="field__label">Reminders</span>
+                        @if (_reminders.Count > 0)
+                        {
+                            <ul class="editor__reminders">
+                                @foreach (var reminder in _reminders)
+                                {
+                                    <li class="editor__reminder" data-testid="editor-reminder">
+                                        <span>@LeadLabel(reminder.LeadMinutes) before@(reminder.FiredAtUtc is null ? "" : " · fired")</span>
+                                        <button class="btn btn--icon" title="Remove reminder" aria-label="Remove reminder"
+                                                data-testid="editor-reminder-delete" disabled="@_busy"
+                                                @onclick="() => DeleteReminderAsync(reminder)">✕</button>
+                                    </li>
+                                }
+                            </ul>
+                        }
+                        <div class="editor__reminder-add">
+                            <select class="field__input" data-testid="editor-reminder-lead" @bind="_reminderLead" disabled="@_busy">
+                                <option value="10">10 minutes</option>
+                                <option value="30">30 minutes</option>
+                                <option value="60">1 hour</option>
+                                <option value="1440">1 day</option>
+                            </select>
+                            <button class="btn" data-testid="editor-reminder-add" disabled="@_busy"
+                                    @onclick="AddReminderAsync">+ Remind me</button>
+                        </div>
+                    </div>
+                }
+
                 @if (_error is not null)
                 {
                     <p class="editor__error" data-testid="editor-error">@_error</p>
@@ -137,6 +169,37 @@
     private IReadOnlyList<CalendarDto> WritableCalendars =>
         Calendars.Where(c => !c.IsReadOnly).ToList();
     private bool HasWritableCalendar => WritableCalendars.Count > 0;
+
+    // ── Reminders (edit mode only — a draft has no event id to remind on yet). ──
+    private IReadOnlyList<ReminderDto> _reminders = Array.Empty<ReminderDto>();
+    private int _reminderLead = 30;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (IsEdit)
+            _reminders = (await Api.GetRemindersAsync()).Where(r => r.EventId == Event!.Id).ToList();
+    }
+
+    private async Task AddReminderAsync()
+    {
+        if (!IsEdit) return;
+        var created = await Api.CreateReminderAsync(Event!.Id, _reminderLead);
+        if (created is not null)
+            _reminders = _reminders.Append(created).OrderBy(r => r.LeadMinutes).ToList();
+    }
+
+    private async Task DeleteReminderAsync(ReminderDto reminder)
+    {
+        if (await Api.DeleteReminderAsync(reminder.Id))
+            _reminders = _reminders.Where(r => r.Id != reminder.Id).ToList();
+    }
+
+    private static string LeadLabel(int minutes)
+    {
+        if (minutes is >= 1440 && minutes % 1440 == 0) return $"{minutes / 1440} d";
+        if (minutes is >= 60 && minutes % 60 == 0) return $"{minutes / 60} h";
+        return $"{minutes} min";
+    }
 
     protected override void OnParametersSet()
     {

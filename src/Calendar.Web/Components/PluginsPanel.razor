@@ -1,0 +1,140 @@
+@using Calendar.Web.Services
+@inject CalendarApiClient Api
+
+@*
+    Sidebar plugin management (ROADMAP Phase 6 marketplace; UI-WIREFRAMES §1). Lists installed plugins with
+    their live registry state, uninstalls (server-gated: 409 while accounts still use one), and installs a
+    signed bundle from a URL — the server runs the integrity/signature/trust gates and answers with the
+    reason when one fails.
+*@
+
+<section class="sidebar-group" data-testid="plugins-panel">
+    <h2 class="sidebar-group__title">Plugins</h2>
+
+    @if (_plugins.Count == 0)
+    {
+        <p class="sidebar-group__empty" data-testid="plugins-empty">No plugins loaded.</p>
+    }
+    else
+    {
+        <ul class="sidebar-list">
+            @foreach (var plugin in _plugins)
+            {
+                <li class="sidebar-list__item plugins-panel__row" data-testid="plugin-row">
+                    <span class="dot @(plugin.State == "Running" ? "dot--ok" : "dot--bad")"
+                          title="@(plugin.FaultReason ?? plugin.State)"></span>
+                    <span class="plugins-panel__name" title="@plugin.Id">@plugin.Name</span>
+                    <span class="plugins-panel__version">v@(plugin.Version)</span>
+                    <button class="btn btn--icon" title="Uninstall @plugin.Name" aria-label="Uninstall @plugin.Name"
+                            data-testid="plugin-uninstall" disabled="@_busy"
+                            @onclick="() => UninstallAsync(plugin)">🗑</button>
+                </li>
+            }
+        </ul>
+    }
+
+    <button class="btn add-account__provider" data-testid="plugin-install-toggle" disabled="@_busy"
+            @onclick="() => _installOpen = !_installOpen">
+        @(_installOpen ? "Cancel install" : "+ Install plugin…")
+    </button>
+    @if (_installOpen)
+    {
+        <div class="add-account__caldav" data-testid="plugin-install-form">
+            <input class="add-account__input" placeholder="Bundle URL (https://…/plugin.zip)"
+                   data-testid="plugin-install-url" @bind="_installUrl" @bind:event="oninput" disabled="@_busy" />
+            <input class="add-account__input" placeholder="sha256 (optional)"
+                   data-testid="plugin-install-sha" @bind="_installSha" @bind:event="oninput" disabled="@_busy" />
+            <button class="btn" data-testid="plugin-install-go"
+                    disabled="@(_busy || string.IsNullOrWhiteSpace(_installUrl))" @onclick="InstallAsync">
+                @(_busy ? "Installing…" : "Install")
+            </button>
+        </div>
+    }
+
+    @if (_notice is not null)
+    {
+        <p class="add-account__notice" data-testid="plugin-notice">@_notice</p>
+    }
+    @if (_error is not null)
+    {
+        <p class="add-account__error" data-testid="plugin-error">@_error</p>
+    }
+</section>
+
+@code {
+    private IReadOnlyList<PluginDto> _plugins = Array.Empty<PluginDto>();
+    private bool _installOpen;
+    private string _installUrl = string.Empty;
+    private string _installSha = string.Empty;
+    private bool _busy;
+    private string? _notice;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync() => await ReloadAsync();
+
+    private async Task ReloadAsync()
+    {
+        try { _plugins = await Api.GetPluginsAsync(); }
+        catch { /* panel is progressive enhancement — an API blip leaves the last list */ }
+    }
+
+    private async Task InstallAsync()
+    {
+        _busy = true;
+        _notice = _error = null;
+        try
+        {
+            var (plugin, error) = await Api.InstallPluginAsync(new InstallPluginBody(
+                _installUrl.Trim(),
+                string.IsNullOrWhiteSpace(_installSha) ? null : _installSha.Trim()));
+            if (plugin is not null)
+            {
+                _notice = plugin.State == "Running"
+                    ? $"Installed {plugin.Name} v{plugin.Version} ({plugin.TrustTier})."
+                    : $"Installed {plugin.Name}, but it faulted: {plugin.FaultReason}";
+                _installOpen = false;
+                _installUrl = _installSha = string.Empty;
+                await ReloadAsync();
+            }
+            else
+            {
+                _error = error ?? "Install failed.";
+            }
+        }
+        catch (Exception)
+        {
+            _error = "Install failed. Check the URL and try again.";
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task UninstallAsync(PluginDto plugin)
+    {
+        _busy = true;
+        _notice = _error = null;
+        try
+        {
+            var (ok, error) = await Api.UninstallPluginAsync(plugin.Id);
+            if (ok)
+            {
+                _notice = $"Uninstalled {plugin.Name}.";
+                await ReloadAsync();
+            }
+            else
+            {
+                _error = error ?? "Uninstall failed.";
+            }
+        }
+        catch (Exception)
+        {
+            _error = "Uninstall failed. Try again.";
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+}

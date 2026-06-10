@@ -50,6 +50,31 @@ public sealed record MapEventDto(
     string PlaceLabel,
     string? Color);
 
+/// <summary>A reminder from <c>GET /api/reminders</c> (Phase 6 polish).</summary>
+public sealed record ReminderDto(
+    Guid Id,
+    Guid EventId,
+    string EventTitle,
+    DateTimeOffset EventStartUtc,
+    int LeadMinutes,
+    DateTimeOffset? FiredAtUtc);
+
+/// <summary>Body for <c>POST /api/plugins/install</c> (marketplace).</summary>
+public sealed record InstallPluginBody(
+    string DownloadUrl,
+    string? Sha256 = null,
+    string? Signature = null,
+    string? PublisherName = null);
+
+/// <summary>The installed plugin returned by <c>POST /api/plugins/install</c>.</summary>
+public sealed record InstalledPluginDto(
+    string Id,
+    string Name,
+    string Version,
+    string State,
+    string TrustTier,
+    string? FaultReason);
+
 /// <summary>One search hit from <c>GET /api/search</c> (Phase 6 polish).</summary>
 public sealed record SearchResultDto(
     Guid Id,

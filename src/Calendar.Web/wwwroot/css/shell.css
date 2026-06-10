@@ -254,6 +254,18 @@ html, body {
 .swatch { width: 10px; height: 10px; border-radius: 3px; display: inline-block; flex: 0 0 auto; }
 .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 4px; }
 .dot--ok { background: #34a853; }
+.dot--bad { background: #d05050; }
+
+/* ── Plugins panel (marketplace) ── */
+.plugins-panel__row { display: flex; align-items: center; gap: 6px; }
+.plugins-panel__name { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.plugins-panel__version { font-size: 0.72rem; opacity: 0.6; }
+
+/* ── Event editor reminders ── */
+.editor__reminders { list-style: none; margin: 0 0 6px; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.editor__reminder { display: flex; align-items: center; justify-content: space-between; font-size: 0.82rem; }
+.editor__reminder-add { display: flex; gap: 6px; }
+.editor__reminder-add .field__input { flex: 1 1 auto; }
 
 /* ── Placeholder views (deliberate empty state for not-yet-built views) ── */
 .placeholder { display: flex; align-items: center; justify-content: center; height: 100%; padding: 24px; }

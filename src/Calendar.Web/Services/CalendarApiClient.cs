@@ -23,6 +23,74 @@ public sealed class CalendarApiClient
         return await _http.GetFromJsonAsync<List<MapEventDto>>(url, ct) ?? new List<MapEventDto>();
     }
 
+    // ── Reminders (Phase 6 polish): created in the event editor, fired by the hosted sweep. ──
+
+    /// <summary>All reminders (pending + fired), joined with their events. Degrades to empty.</summary>
+    public async Task<IReadOnlyList<ReminderDto>> GetRemindersAsync(CancellationToken ct = default)
+    {
+        try
+        {
+            return await _http.GetFromJsonAsync<List<ReminderDto>>("api/reminders", ct) ?? new List<ReminderDto>();
+        }
+        catch (Exception ex) when (ex is HttpRequestException or System.Text.Json.JsonException)
+        {
+            return new List<ReminderDto>();   // reminders are progressive enhancement in the editor.
+        }
+    }
+
+    /// <summary>Create a reminder firing <paramref name="leadMinutes"/> before the event starts.</summary>
+    public async Task<ReminderDto?> CreateReminderAsync(Guid eventId, int leadMinutes, CancellationToken ct = default)
+    {
+        var response = await _http.PostAsJsonAsync(
+            $"api/events/{eventId}/reminders", new { leadMinutes }, ct);
+        if (!response.IsSuccessStatusCode)
+            return null;
+        return await response.Content.ReadFromJsonAsync<ReminderDto>(ct);
+    }
+
+    /// <summary>Delete a reminder (<c>DELETE /api/reminders/{id}</c>).</summary>
+    public async Task<bool> DeleteReminderAsync(Guid id, CancellationToken ct = default)
+    {
+        var response = await _http.DeleteAsync($"api/reminders/{id}", ct);
+        return response.IsSuccessStatusCode;
+    }
+
+    // ── Marketplace (Phase 6): install signed bundles, uninstall (gated server-side). ──
+
+    /// <summary>Install a bundle from a URL; returns the plugin or the gate failure message.</summary>
+    public async Task<(InstalledPluginDto? Plugin, string? Error)> InstallPluginAsync(
+        InstallPluginBody body, CancellationToken ct = default)
+    {
+        var response = await _http.PostAsJsonAsync("api/plugins/install", body, ct);
+        if (response.IsSuccessStatusCode)
+            return (await response.Content.ReadFromJsonAsync<InstalledPluginDto>(ct), null);
+        return (null, await ReadErrorAsync(response, ct));
+    }
+
+    /// <summary>Uninstall a plugin; the error carries the 409 reason when accounts still use it.</summary>
+    public async Task<(bool Ok, string? Error)> UninstallPluginAsync(string pluginId, CancellationToken ct = default)
+    {
+        var response = await _http.DeleteAsync($"api/plugins/{Uri.EscapeDataString(pluginId)}", ct);
+        if (response.IsSuccessStatusCode)
+            return (true, null);
+        return (false, await ReadErrorAsync(response, ct));
+    }
+
+    private static async Task<string?> ReadErrorAsync(HttpResponseMessage response, CancellationToken ct)
+    {
+        try
+        {
+            var body = await response.Content.ReadFromJsonAsync<ErrorBody>(ct);
+            return body?.Error ?? $"Request failed ({(int)response.StatusCode}).";
+        }
+        catch
+        {
+            return $"Request failed ({(int)response.StatusCode}).";
+        }
+    }
+
+    private sealed record ErrorBody(string? Error);
+
     /// <summary>Search stored events by title/location (<c>GET /api/search</c>, Phase 6 polish).</summary>
     public async Task<IReadOnlyList<SearchResultDto>> SearchEventsAsync(string query, int limit = 25, CancellationToken ct = default)
     {

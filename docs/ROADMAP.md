@@ -33,7 +33,9 @@ Each phase ends with something you can run.
 - [x] **"Add account"** flow (paste an ICS URL — holidays, birthdays).
 - [x] **Month + Multi-month** views from the normalized stream.
 - [x] Per-calendar **show/hide** + **category** hide (Holidays, Birthdays).
-- [x] **Duplicate detection & grouping** (auto canonical by account priority). *Merge/split override UI — follow-up.*
+- [x] **Duplicate detection & grouping** (auto canonical by account priority), plus the merge/split
+      override UI: the "+N" badge opens a group inspector with "show this copy" / "not a duplicate";
+      overrides bind by UID, tombstone for undo, and `ForceMerge` is available via the API.
 
 **Done when:** two holiday feeds render, duplicates collapse, birthdays hide with one switch — offline. ✅
 **This is the first demo.**

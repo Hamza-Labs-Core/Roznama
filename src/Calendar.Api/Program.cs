@@ -551,6 +551,41 @@ api.MapDelete("/reminders/{id:guid}", async (Guid id, IReminderService reminders
 api.MapPost("/reminders/sweep", async (IReminderService reminders, CancellationToken ct) =>
     Results.Ok(await reminders.SweepAsync(ct)));
 
+// ── Duplicates (ARCHITECTURE §12): inspect a group's copies + user merge/split/canonical overrides.
+//    Overrides bind by iCal UID (survive re-sync), tombstone on delete (undo), and regroup immediately. ──
+api.MapGet("/events/{id:guid}/duplicates", async (Guid id, IDuplicateService duplicates, CancellationToken ct) =>
+{
+    var group = await duplicates.GetGroupForEventAsync(id, ct);
+    return group is null ? Results.NotFound() : Results.Ok(group);
+});
+
+api.MapGet("/duplicates/overrides", async (IDuplicateService duplicates, CancellationToken ct) =>
+    Results.Ok(await duplicates.ListOverridesAsync(ct)));
+
+api.MapPost("/duplicates/overrides", async (CreateDuplicateOverrideBody body, IDuplicateService duplicates, IChangeFeed feed, CancellationToken ct) =>
+{
+    if (!Enum.TryParse<OverrideKind>(body.Kind, ignoreCase: true, out var kind) || !Enum.IsDefined(kind))
+        return Results.BadRequest(new { error = $"unknown kind '{body.Kind}' (expected ForceMerge|NeverMerge|SetCanonical)" });
+    try
+    {
+        var dto = await duplicates.CreateOverrideAsync(kind, body.Uids ?? Array.Empty<string>(), body.Reason, ct);
+        feed.Publish(ChangeEventTypes.EventsChanged, new { source = "dedup" });
+        return Results.Created($"/api/duplicates/overrides/{dto.Id}", dto);
+    }
+    catch (ArgumentException ex)
+    {
+        return Results.BadRequest(new { error = ex.Message });
+    }
+});
+
+api.MapDelete("/duplicates/overrides/{id:guid}", async (Guid id, IDuplicateService duplicates, IChangeFeed feed, CancellationToken ct) =>
+{
+    if (!await duplicates.RemoveOverrideAsync(id, ct))
+        return Results.NotFound();
+    feed.Publish(ChangeEventTypes.EventsChanged, new { source = "dedup" });
+    return Results.NoContent();
+});
+
 // ── Search (Phase 6 polish): substring match over title/location on visible calendars. ──
 api.MapGet("/search", async (string? q, int? limit, IEventSearchService search, CancellationToken ct) =>
     string.IsNullOrWhiteSpace(q)
@@ -813,6 +848,7 @@ internal record VisibilityPatch(bool IsVisible);
 internal record CreateReminderBody(int LeadMinutes);
 internal record ImportIcsBody(string? Name, string Ics);
 internal record CloudEnableBody(string Passphrase, string RelayUrl, Guid? SpaceId, string? SpaceToken);
+internal record CreateDuplicateOverrideBody(string? Kind, string[]? Uids, string? Reason);
 internal record RelayPushBody(Guid DeviceId, byte[] Payload);
 
 internal record CreateEventBody(

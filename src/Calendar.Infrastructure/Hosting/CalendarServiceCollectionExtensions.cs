@@ -51,6 +51,7 @@ public static class CalendarServiceCollectionExtensions
         services.AddScoped<IReminderService, ReminderService>();
         services.AddScoped<IImportService, ImportService>();
         services.AddScoped<IEventSearchService, EventSearchService>();
+        services.AddScoped<IDuplicateService, DuplicateService>();
 
         // Optional E2E-encrypted cloud sync (ADR-0003): device engine + the self-hosted relay store.
         services.AddSingleton<Calendar.Application.Cloud.IRelayClient>(

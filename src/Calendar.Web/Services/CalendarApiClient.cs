@@ -23,6 +23,30 @@ public sealed class CalendarApiClient
         return await _http.GetFromJsonAsync<List<MapEventDto>>(url, ct) ?? new List<MapEventDto>();
     }
 
+    // ── Duplicates (ARCHITECTURE §12): group inspection + user merge/split/canonical overrides. ──
+
+    /// <summary>The duplicate group containing this event, or null when it isn't grouped.</summary>
+    public async Task<DuplicateGroupDto?> GetDuplicateGroupAsync(Guid eventId, CancellationToken ct = default)
+    {
+        try
+        {
+            return await _http.GetFromJsonAsync<DuplicateGroupDto>($"api/events/{eventId}/duplicates", ct);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or System.Text.Json.JsonException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>Create a duplicate override (kind: ForceMerge | NeverMerge | SetCanonical) and regroup.</summary>
+    public async Task<bool> CreateDuplicateOverrideAsync(
+        string kind, IReadOnlyList<string> uids, string? reason = null, CancellationToken ct = default)
+    {
+        var response = await _http.PostAsJsonAsync(
+            "api/duplicates/overrides", new { kind, uids, reason }, ct);
+        return response.IsSuccessStatusCode;
+    }
+
     // ── Reminders (Phase 6 polish): created in the event editor, fired by the hosted sweep. ──
 
     /// <summary>All reminders (pending + fired), joined with their events. Degrades to empty.</summary>

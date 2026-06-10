@@ -50,6 +50,19 @@ public sealed record MapEventDto(
     string PlaceLabel,
     string? Color);
 
+/// <summary>One copy inside a duplicate group (<c>GET /api/events/{id}/duplicates</c>).</summary>
+public sealed record DuplicateMemberDto(
+    Guid EventId,
+    string Uid,
+    string Title,
+    DateTimeOffset StartUtc,
+    string CalendarName,
+    string AccountName,
+    bool IsCanonical);
+
+/// <summary>A duplicate group for the inspector dialog.</summary>
+public sealed record DuplicateGroupDto(Guid GroupId, IReadOnlyList<DuplicateMemberDto> Members);
+
 /// <summary>A reminder from <c>GET /api/reminders</c> (Phase 6 polish).</summary>
 public sealed record ReminderDto(
     Guid Id,

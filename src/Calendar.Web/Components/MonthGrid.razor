@@ -55,7 +55,19 @@
                             <span class="chip__title">@ev.Title</span>
                             @if (ev.DuplicateCount > 0)
                             {
-                                <span class="chip__dup">+@ev.DuplicateCount</span>
+                                @* The badge opens the duplicate-group inspector when the host wires it (§12). *@
+                                @if (OnDuplicateClick.HasDelegate)
+                                {
+                                    <button class="chip__dup chip__dup--clickable" data-testid="chip-dup"
+                                            title="@ev.DuplicateCount duplicate copies — inspect"
+                                            aria-label="@ev.DuplicateCount duplicate copies of @ev.Title — inspect"
+                                            @onclick:stopPropagation="true"
+                                            @onclick="() => OnDuplicateClick.InvokeAsync(ev)">+@ev.DuplicateCount</button>
+                                }
+                                else
+                                {
+                                    <span class="chip__dup">+@ev.DuplicateCount</span>
+                                }
                             }
                         </div>
                     }
@@ -84,6 +96,9 @@
     /// When no handler is bound the chips are inert (e.g. the compact multi-month planner).
     /// </summary>
     [Parameter] public EventCallback<EventDto> OnEventClick { get; set; }
+
+    /// <summary>Raised when a chip's "+N" badge is clicked, opening the duplicate-group inspector (§12).</summary>
+    [Parameter] public EventCallback<EventDto> OnDuplicateClick { get; set; }
 
     /// <summary>
     /// The cheapest flight/stay price per date for the multi-month overlay (travel-fares-plugin.md §10.2,

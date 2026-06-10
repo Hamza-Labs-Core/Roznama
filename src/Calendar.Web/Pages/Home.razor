@@ -216,7 +216,8 @@
             @switch (_view)
             {
                 case CalendarView.Month:
-                    <MonthGrid Month="_month" Events="_events" OnEventClick="OpenEditEvent" />
+                    <MonthGrid Month="_month" Events="_events" OnEventClick="OpenEditEvent"
+                               OnDuplicateClick="OpenDuplicates" />
                     break;
                 case CalendarView.MultiMonth:
                     <MultiMonthGrid Start="_month" Count="6" Events="_events"
@@ -258,6 +259,11 @@
     @if (_sharing is not null)
     {
         <ShareDialog Calendar="_sharing" OnClose="CloseShare" />
+    }
+    @if (_duplicatesFor is not null)
+    {
+        <DuplicatesDialog EventId="_duplicatesFor.Value" OnChanged="ReloadEventsAsync"
+                          OnClose="() => _duplicatesFor = null" />
     }
 
 </div>
@@ -510,6 +516,10 @@
     // ── Sharing ──
     private void OpenShare(CalendarDto cal) => _sharing = cal;
     private void CloseShare() => _sharing = null;
+
+    // ── Duplicates: a chip's "+N" badge opens the group inspector (ARCHITECTURE §12). ──
+    private Guid? _duplicatesFor;
+    private void OpenDuplicates(EventDto ev) => _duplicatesFor = ev.Id;
 
     private async Task ReloadEventsAsync()
     {

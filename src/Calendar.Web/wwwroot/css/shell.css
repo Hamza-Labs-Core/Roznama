@@ -269,6 +269,25 @@ html, body {
 .plugins-panel__name { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .plugins-panel__version { font-size: 0.72rem; opacity: 0.6; }
 
+/* ── Duplicates dialog (ARCHITECTURE §12) ── */
+.chip__dup--clickable { border: 0; cursor: pointer; font: inherit; }
+.duplicates__hint { font-size: 0.82rem; opacity: 0.8; margin: 0 0 8px; }
+.duplicates__list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.duplicates__row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 8px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+}
+.duplicates__row--canonical { border-color: #34a853; }
+.duplicates__who { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.duplicates__title { font-weight: 600; font-size: 0.86rem; }
+.duplicates__meta { font-size: 0.74rem; opacity: 0.7; }
+.duplicates__actions { display: flex; gap: 6px; flex: 0 0 auto; }
+
 /* ── Event editor reminders ── */
 .editor__reminders { list-style: none; margin: 0 0 6px; padding: 0; display: flex; flex-direction: column; gap: 4px; }
 .editor__reminder { display: flex; align-items: center; justify-content: space-between; font-size: 0.82rem; }

@@ -247,7 +247,7 @@
     <aside class="shell__inspector" aria-label="Inspector">
         <h2 class="inspector__title">Inspector</h2>
         <p class="inspector__empty">Select an event, trip, or place to see details, travel time, and prices here.</p>
-        <FareWatchPanel />
+        <FareWatchPanel RefreshToken="_notificationsToken" />
     </aside>
 
     @* ── Modals: event editor (create/edit) + share dialog (UI-WIREFRAMES §7) ── *@
@@ -303,7 +303,7 @@
         !string.IsNullOrWhiteSpace(_calDavUser) &&
         !string.IsNullOrWhiteSpace(_calDavPassword);
 
-    private OutboxStatusDto _outbox = new(0, 0, null);
+    private OutboxStatusDto _outbox = new(0, 0, 0, 0, 0, 0);
 
     // Multi-month price overlay (UI-WIREFRAMES §3, travel-fares-plugin.md §10.2). The "Prices" switch on the Multi
     // view toggles a per-date cheapest-flight overlay for a chosen route. Empty when no provider is configured.
@@ -353,6 +353,7 @@
     private IJSObjectReference? _sseModule;
     private DotNetObjectReference<Home>? _selfRef;
     private int _sseConnectionId;
+    private int _notificationsToken;
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -383,7 +384,7 @@
                 _accounts = await Api.GetAccountsAsync();     // sidebar health (status / last-sync).
                 break;
             case "notificationsChanged":
-                await ReloadOutboxAsync();
+                _notificationsToken++;      // FareWatchPanel reloads its bell/notifications list.
                 break;
         }
         StateHasChanged();

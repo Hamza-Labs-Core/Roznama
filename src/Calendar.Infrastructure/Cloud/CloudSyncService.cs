@@ -26,8 +26,8 @@ namespace Calendar.Infrastructure.Cloud;
 /// </list>
 /// Synced: Account (metadata only — <c>AuthRef</c> is stripped and arriving accounts land
 /// <see cref="AccountStatus.NeedsAuth"/>; tokens NEVER leave the authorizing device), Calendar, Category,
-/// Place, FareWatch, Share. Provider event caches are NOT synced — each device re-pulls events through its
-/// own credentials.
+/// Place, FareWatch, Share, DuplicateOverride (applied overrides trigger a regroup). Provider event caches
+/// are NOT synced — each device re-pulls events through its own credentials.
 /// </summary>
 public sealed class CloudSyncService : ICloudSyncService
 {
@@ -38,17 +38,19 @@ public sealed class CloudSyncService : ICloudSyncService
     private readonly ITokenVault _vault;
     private readonly IRelayClient _relay;
     private readonly DeviceProvider _device;
+    private readonly DedupGrouper _dedup;
     private readonly ILogger<CloudSyncService> _logger;
     private readonly IChangeFeed? _feed;
 
     public CloudSyncService(
         CalendarDbContext db, ITokenVault vault, IRelayClient relay, DeviceProvider device,
-        ILogger<CloudSyncService> logger, IChangeFeed? feed = null)
+        DedupGrouper dedup, ILogger<CloudSyncService> logger, IChangeFeed? feed = null)
     {
         _db = db;
         _vault = vault;
         _relay = relay;
         _device = device;
+        _dedup = dedup;
         _logger = logger;
         _feed = feed;
     }
@@ -134,9 +136,9 @@ public sealed class CloudSyncService : ICloudSyncService
         var deviceId = await _device.GetDeviceIdAsync(ct).ConfigureAwait(false);
 
         var pushed = await PushAsync(config, key, tokenEntry.Value, deviceId, ct).ConfigureAwait(false);
-        var (blobsPulled, applied) = await PullAsync(config, key, tokenEntry.Value, deviceId, ct).ConfigureAwait(false);
+        var (blobsPulled, applied, freshConfig) = await PullAsync(config, key, tokenEntry.Value, deviceId, ct).ConfigureAwait(false);
 
-        config.LastSyncAtUtc = DateTimeOffset.UtcNow;
+        freshConfig.LastSyncAtUtc = DateTimeOffset.UtcNow;
         await _db.SaveChangesAsync(ct).ConfigureAwait(false);
 
         if (pushed > 0 || applied > 0)
@@ -173,6 +175,8 @@ public sealed class CloudSyncService : ICloudSyncService
             updated => maxUpdated = Max(maxUpdated, updated), ct).ConfigureAwait(false);
         await CollectAsync<Share>("share", deviceId, cursor, items, null,
             updated => maxUpdated = Max(maxUpdated, updated), ct).ConfigureAwait(false);
+        await CollectAsync<DuplicateOverride>("duplicateOverride", deviceId, cursor, items, null,
+            updated => maxUpdated = Max(maxUpdated, updated), ct).ConfigureAwait(false);
 
         if (items.Count == 0)
             return 0;
@@ -207,15 +211,16 @@ public sealed class CloudSyncService : ICloudSyncService
 
     // ── pull + apply ──────────────────────────────────────────────────────────────────────────────
 
-    private async Task<(int Blobs, int Applied)> PullAsync(
+    private async Task<(int Blobs, int Applied, CloudSyncConfig Config)> PullAsync(
         CloudSyncConfig config, byte[] key, string token, Guid deviceId, CancellationToken ct)
     {
         var blobs = await _relay.PullAsync(
             config.RelayUrl, config.SpaceId, token, config.LastPulledSeq, deviceId, ct).ConfigureAwait(false);
         if (blobs.Count == 0)
-            return (0, 0);
+            return (0, 0, config);
 
         var applied = 0;
+        var overridesApplied = false;
         foreach (var blob in blobs)
         {
             byte[] plaintext;
@@ -225,24 +230,47 @@ public sealed class CloudSyncService : ICloudSyncService
             }
             catch (CryptographicException ex)
             {
+                // A wrong key fails EVERY blob — stay loud rather than silently skipping the space.
                 throw new InvalidOperationException(
                     "A cloud blob could not be decrypted — wrong passphrase for this space?", ex);
             }
 
-            var changeSet = JsonSerializer.Deserialize<ChangeSet>(plaintext, Json);
-            if (changeSet is not null)
+            // Apply + persist PER BLOB so the cursor advances incrementally, and a single poison blob
+            // (incompatible schema, FK to a row this device never received) is skipped instead of
+            // permanently wedging the pull stream — later LWW rounds re-converge the data.
+            try
             {
-                foreach (var item in changeSet.Items)
+                var changeSet = JsonSerializer.Deserialize<ChangeSet>(plaintext, Json);
+                if (changeSet is not null)
                 {
-                    if (await ApplyAsync(item, ct).ConfigureAwait(false))
-                        applied++;
+                    foreach (var item in changeSet.Items)
+                    {
+                        if (await ApplyAsync(item, ct).ConfigureAwait(false))
+                        {
+                            applied++;
+                            overridesApplied |= item.Type == "duplicateOverride";
+                        }
+                    }
                 }
+                config.LastPulledSeq = Math.Max(config.LastPulledSeq, blob.Seq);
+                await _db.SaveChangesAsync(ct).ConfigureAwait(false);
             }
-            config.LastPulledSeq = Math.Max(config.LastPulledSeq, blob.Seq);
+            catch (Exception ex) when (ex is JsonException or DbUpdateException)
+            {
+                _db.ChangeTracker.Clear();          // drop the half-applied blob…
+                config = await _db.CloudSyncConfigs.FirstAsync(c => c.Id == config.Id, ct).ConfigureAwait(false);
+                config.LastPulledSeq = Math.Max(config.LastPulledSeq, blob.Seq);
+                await _db.SaveChangesAsync(ct).ConfigureAwait(false);
+                _logger.LogError(ex,
+                    "Cloud blob {Seq} could not be applied and was skipped; its rows re-converge in later rounds.",
+                    blob.Seq);
+            }
         }
 
-        await _db.SaveChangesAsync(ct).ConfigureAwait(false);
-        return (blobs.Count, applied);
+        // Applied overrides change how duplicates group — regroup now rather than waiting for the next sync.
+        if (overridesApplied)
+            await _dedup.RegroupAsync(ct).ConfigureAwait(false);
+        return (blobs.Count, applied, config);
     }
 
     private async Task<bool> ApplyAsync(ChangeItem item, CancellationToken ct) => item.Type switch
@@ -253,6 +281,7 @@ public sealed class CloudSyncService : ICloudSyncService
         "place" => await ApplyEntityAsync<Place>(item.Data, ct).ConfigureAwait(false),
         "fareWatch" => await ApplyEntityAsync<FareWatch>(item.Data, ct).ConfigureAwait(false),
         "share" => await ApplyEntityAsync<Share>(item.Data, ct).ConfigureAwait(false),
+        "duplicateOverride" => await ApplyEntityAsync<DuplicateOverride>(item.Data, ct).ConfigureAwait(false),
         _ => false,         // unknown type from a newer schema — skipped, never fatal.
     };
 
@@ -263,10 +292,13 @@ public sealed class CloudSyncService : ICloudSyncService
         if (remote is null)
             return false;
 
-        // IgnoreQueryFilters: a locally-tombstoned row must still be found, or we'd re-insert its Id.
+        // Local first: the same row can arrive in two blobs of one pull, and a DB query can't see the
+        // earlier unsaved Add (double-Add = PK violation). IgnoreQueryFilters on the DB side: a locally-
+        // tombstoned row must still be found, or we'd re-insert its Id.
         var id = EntityId(remote);
-        var local = await _db.Set<T>().IgnoreQueryFilters()
-            .FirstOrDefaultAsync(e => EF.Property<Guid>(e, "Id") == id, ct).ConfigureAwait(false);
+        var local = _db.Set<T>().Local.FirstOrDefault(e => EntityId(e) == id)
+            ?? await _db.Set<T>().IgnoreQueryFilters()
+                .FirstOrDefaultAsync(e => EF.Property<Guid>(e, "Id") == id, ct).ConfigureAwait(false);
         if (local is null)
         {
             if (remote.IsDeleted)
@@ -287,8 +319,9 @@ public sealed class CloudSyncService : ICloudSyncService
         if (remote is null)
             return false;
 
-        var local = await _db.Accounts.IgnoreQueryFilters()
-            .FirstOrDefaultAsync(a => a.Id == remote.Id, ct).ConfigureAwait(false);
+        var local = _db.Accounts.Local.FirstOrDefault(a => a.Id == remote.Id)
+            ?? await _db.Accounts.IgnoreQueryFilters()
+                .FirstOrDefaultAsync(a => a.Id == remote.Id, ct).ConfigureAwait(false);
         if (local is null)
         {
             if (remote.IsDeleted)
@@ -316,8 +349,13 @@ public sealed class CloudSyncService : ICloudSyncService
 
     private async Task EnsurePluginRowAsync(string pluginId, CancellationToken ct)
     {
-        if (await _db.Plugins.AnyAsync(p => p.Id == pluginId, ct).ConfigureAwait(false))
+        // Local guards a second account for the same plugin inside one pull; no inner SaveChanges — EF
+        // orders the Plugin insert before the Account FK at the per-blob save.
+        if (_db.Plugins.Local.Any(p => p.Id == pluginId) ||
+            await _db.Plugins.AnyAsync(p => p.Id == pluginId, ct).ConfigureAwait(false))
+        {
             return;
+        }
         _db.Plugins.Add(new PluginEntity
         {
             Id = pluginId,
@@ -331,7 +369,6 @@ public sealed class CloudSyncService : ICloudSyncService
             Manifest = "{}",
             InstalledAtUtc = DateTimeOffset.UtcNow,
         });
-        await _db.SaveChangesAsync(ct).ConfigureAwait(false);
     }
 
     /// <summary>LWW: higher Lamport wins; wall-clock breaks ties (ISyncEntity contract, DATA-SCHEMA §7).</summary>

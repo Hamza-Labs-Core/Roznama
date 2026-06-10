@@ -198,7 +198,8 @@ public sealed class CloudSyncTests : IDisposable
         var deviceProvider = new DeviceProvider(db);
         var deviceId = deviceProvider.GetDeviceIdAsync(default).GetAwaiter().GetResult();
         var cloud = new CloudSyncService(
-            db, new InMemoryTokenVault(), relay, deviceProvider, NullLogger<CloudSyncService>.Instance);
+            db, new InMemoryTokenVault(), relay, deviceProvider, new DedupGrouper(db),
+            NullLogger<CloudSyncService>.Instance);
         return new Device(db, cloud, deviceId);
     }
 

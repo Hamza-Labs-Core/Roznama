@@ -122,6 +122,20 @@
 </section>
 
 @code {
+    /// <summary>Bump to force a reload — the host increments it on a <c>notificationsChanged</c> SSE event.</summary>
+    [Parameter] public int RefreshToken { get; set; }
+
+    private int _lastRefreshToken;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (RefreshToken != _lastRefreshToken)
+        {
+            _lastRefreshToken = RefreshToken;
+            await ReloadAsync();
+        }
+    }
+
     private IReadOnlyList<FareWatchDto> _watches = Array.Empty<FareWatchDto>();
     private IReadOnlyList<NotificationDto> _notifications = Array.Empty<NotificationDto>();
     private readonly Dictionary<Guid, Spark?> _sparks = new();

@@ -220,7 +220,7 @@ public sealed class CalendarApiClient
     /// <summary>Queued-writes summary for the "↻ (N)" footer indicator (<c>GET /api/sync/outbox</c>, §8).</summary>
     public async Task<OutboxStatusDto> GetOutboxStatusAsync(CancellationToken ct = default) =>
         await _http.GetFromJsonAsync<OutboxStatusDto>("api/sync/outbox", ct)
-            ?? new OutboxStatusDto(0, 0, null);
+            ?? new OutboxStatusDto(0, 0, 0, 0, 0, 0);
 
     // ── Sharing (ARCHITECTURE §16). Owner-facing management; the public feed lives at /share/{token}.ics. ──
 

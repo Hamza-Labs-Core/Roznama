@@ -10,6 +10,11 @@ using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Enums cross the wire as their names ("Flight", "Reminder", "InApp") — the Blazor client's DTOs and
+// API.md document strings, and numeric enum values would otherwise break their deserialization.
+builder.Services.ConfigureHttpJsonOptions(options =>
+    options.SerializerOptions.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter()));
+
 // Discover plugins from <appBaseDir>/plugins (the build copies first-party bundles there).
 builder.Configuration["PluginHost:Directories:0"] ??=
     Path.Combine(AppContext.BaseDirectory, "plugins");
@@ -153,6 +158,13 @@ api.MapPost("/accounts", async (
     HttpRequest http, CancellationToken ct) =>
 {
     const string icsPluginId = "org.unifiedcalendar.ics";
+    // The ICS plugin is feed-driven: without a feedUrl the generic scheme-none path would mint a dead
+    // Connected account that fails every sweep — reject it up front like the pre-generalization endpoint.
+    if (req.PluginId == icsPluginId && string.IsNullOrWhiteSpace(req.FeedUrl) &&
+        (req.Config is null || !req.Config.ContainsKey("feedUrl")))
+    {
+        return Results.BadRequest(new { error = "feedUrl is required to connect an ICS feed" });
+    }
     if (!string.IsNullOrWhiteSpace(req.FeedUrl) &&
         (string.IsNullOrWhiteSpace(req.PluginId) || req.PluginId == icsPluginId))
     {
@@ -247,6 +259,10 @@ api.MapPost("/events", async (CreateEventBody body, IWriteService writes, IChang
         feed.Publish(ChangeEventTypes.EventsChanged, new { source = "write" });
         return Results.Created($"/api/events/{result.EventId}", ToWriteResponse(result));
     }
+    catch (ConcurrencyConflictException ex)
+    {
+        return Results.Problem(title: "Write conflict", detail: ex.Message, statusCode: StatusCodes.Status409Conflict);
+    }
     catch (ReadOnlyCalendarException ex)
     {
         return Results.Problem(title: "Calendar is read-only", detail: ex.Message, statusCode: StatusCodes.Status409Conflict);
@@ -305,8 +321,12 @@ api.MapDelete("/events/{id:guid}", async (Guid id, IWriteService writes, IChange
 api.MapGet("/sync/outbox", async (IWriteService writes, CancellationToken ct) =>
     Results.Ok(await writes.GetOutboxStatusAsync(ct)));
 
-api.MapPost("/sync/outbox/replay", async (IWriteService writes, CancellationToken ct) =>
-    Results.Ok(await writes.ReplayAsync(ct)));
+api.MapPost("/sync/outbox/replay", async (IWriteService writes, IChangeFeed feed, CancellationToken ct) =>
+{
+    var result = await writes.ReplayAsync(ct);
+    feed.Publish(ChangeEventTypes.EventsChanged, new { source = "replay" });   // replays mutate event rows
+    return Results.Ok(result);
+});
 
 // ── Live refresh (API.md "GET /sync/stream", UI.md §9): server-sent events. Background engines publish
 //    eventsChanged / syncProgress / notificationsChanged; the browser EventSource reloads on each. ──

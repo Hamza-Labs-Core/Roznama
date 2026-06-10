@@ -33,8 +33,10 @@ public sealed class DedupGrouper
 
     public async Task RegroupAsync(CancellationToken ct)
     {
+        // Include events whose signature became null but still reference a group, so their stale
+        // membership is reset rather than left pointing at a row this pass may delete.
         var events = await _db.Events
-            .Where(e => e.DedupSignature != null)
+            .Where(e => e.DedupSignature != null || e.DuplicateGroupId != null)
             .ToListAsync(ct).ConfigureAwait(false);
 
         // Account priority per event (via calendar → account). Lower = higher priority.
@@ -53,17 +55,25 @@ public sealed class DedupGrouper
         // The grouping we want, keyed by signature (auto) or by the force-merge override key.
         var desired = new Dictionary<string, List<Event>>(StringComparer.Ordinal);
 
-        // 1. Force-merges claim their members first — an event belongs to at most one group.
+        // 1. Force-merges claim their members first — an event belongs to at most one group. A merge that
+        //    currently matches fewer than 2 events claims NOTHING (its lone member must keep participating
+        //    in automatic grouping, not silently degrade into a never-merge).
         var claimed = new HashSet<Guid>();
         foreach (var (key, uids) in forceMerges)
         {
-            var members = events.Where(e => uids.Contains(e.Uid) && claimed.Add(e.Id)).ToList();
-            if (members.Count >= 2)
-                desired[key] = members;
+            var members = events
+                .Where(e => e.DedupSignature != null && uids.Contains(e.Uid) && !claimed.Contains(e.Id))
+                .ToList();
+            if (members.Count < 2)
+                continue;
+            foreach (var m in members)
+                claimed.Add(m.Id);
+            desired[key] = members;
         }
 
         // 2. Automatic signature groups over the unclaimed, non-never-merge remainder.
-        var groupable = events.Where(e => !claimed.Contains(e.Id) && !neverMergeUids.Contains(e.Uid));
+        var groupable = events.Where(e =>
+            e.DedupSignature != null && !claimed.Contains(e.Id) && !neverMergeUids.Contains(e.Uid));
         foreach (var bySignature in groupable.GroupBy(e => e.DedupSignature!))
         {
             var members = bySignature.ToList();
@@ -113,7 +123,11 @@ public sealed class DedupGrouper
     private async Task<(HashSet<string> NeverMerge, List<(string Key, HashSet<string> Uids)> ForceMerges,
         HashSet<string> Canonical)> LoadOverridesAsync(CancellationToken ct)
     {
-        var overrides = await _db.DuplicateOverrides.ToListAsync(ct).ConfigureAwait(false);
+        // Deterministic claim order: when two ForceMerge overrides list the same UID, the older one wins
+        // every run (an unordered query could flip groups between runs with no data change).
+        var overrides = await _db.DuplicateOverrides
+            .OrderBy(o => o.CreatedAtUtc).ThenBy(o => o.Id)
+            .ToListAsync(ct).ConfigureAwait(false);
 
         var neverMerge = new HashSet<string>(StringComparer.Ordinal);
         var forceMerges = new List<(string Key, HashSet<string> Uids)>();

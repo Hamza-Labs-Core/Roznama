@@ -156,9 +156,12 @@ public sealed record EventWriteResultDto(
 
 /// <summary>The queued-writes summary from <c>GET /api/sync/outbox</c> — drives the "↻ (N)" footer (§8).</summary>
 public sealed record OutboxStatusDto(
+    int Total,
     int Pending,
+    int InFlight,
     int Failed,
-    DateTimeOffset? OldestQueuedUtc);
+    int Conflict,
+    int Done);
 
 /// <summary>
 /// An active share from <c>GET /api/shares</c> / the result of <c>POST /api/shares</c> (ARCHITECTURE.md §16).

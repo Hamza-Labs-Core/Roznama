@@ -78,9 +78,15 @@ public sealed class ImportService : IImportService
                 _db.Events.Add(ev);
             }
 
-            var startUtc = new DateTimeOffset(ce.Start.AsUtc, TimeSpan.Zero);
+            // All-day VEVENTs are floating DATE values — AsUtc would shift them through the machine's
+            // local zone (off-by-one day east of UTC). Pin them to UTC midnight of the literal date.
+            var startUtc = ce.IsAllDay
+                ? new DateTimeOffset(DateTime.SpecifyKind(ce.Start.Value.Date, DateTimeKind.Utc), TimeSpan.Zero)
+                : new DateTimeOffset(ce.Start.AsUtc, TimeSpan.Zero);
             var endUtc = ce.End is not null
-                ? new DateTimeOffset(ce.End.AsUtc, TimeSpan.Zero)
+                ? ce.IsAllDay
+                    ? new DateTimeOffset(DateTime.SpecifyKind(ce.End.Value.Date, DateTimeKind.Utc), TimeSpan.Zero)
+                    : new DateTimeOffset(ce.End.AsUtc, TimeSpan.Zero)
                 : ce.IsAllDay ? startUtc.AddDays(1) : startUtc.AddHours(1);
 
             ev.Uid = uid;

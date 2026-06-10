@@ -65,11 +65,13 @@ public sealed class CalendarSyncService : ICalendarSyncService
         var categoriesByName = categories.ToDictionary(c => c.Name, StringComparer.OrdinalIgnoreCase);
 
         int totalUpserts = 0, totalDeletes = 0;
+        var calendarsChanged = false;
 
         var remoteCalendars = await source.ListCalendarsAsync(ct).ConfigureAwait(false);
         foreach (var remote in remoteCalendars)
         {
-            var calendar = await UpsertCalendarAsync(account.Id, remote, deviceId, ct).ConfigureAwait(false);
+            var (calendar, calendarChanged) = await UpsertCalendarAsync(account.Id, remote, deviceId, ct).ConfigureAwait(false);
+            calendarsChanged |= calendarChanged;
 
             var syncState = await _db.SyncStates
                 .FirstOrDefaultAsync(s => s.AccountId == account.Id && s.CalendarId == calendar.Id, ct)
@@ -119,20 +121,22 @@ public sealed class CalendarSyncService : ICalendarSyncService
 
         await _dedup.RegroupAsync(ct).ConfigureAwait(false);
 
-        // Live refresh (UI.md §9): a delta that changed the stored set tells open UIs to re-project.
-        if (totalUpserts + totalDeletes > 0)
+        // Live refresh (UI.md §9): a delta that changed the stored set — or calendar metadata (rename,
+        // color, read-only flip), which the sidebar and chips render — tells open UIs to re-project.
+        if (totalUpserts + totalDeletes > 0 || calendarsChanged)
             _feed?.Publish(ChangeEventTypes.EventsChanged, new { source = "sync", accountId });
 
         return new SyncSummary(remoteCalendars.Count, totalUpserts, totalDeletes);
     }
 
-    private async Task<CalendarEntity> UpsertCalendarAsync(
+    private async Task<(CalendarEntity Calendar, bool Changed)> UpsertCalendarAsync(
         Guid accountId, RemoteCalendar remote, Guid deviceId, CancellationToken ct)
     {
         var calendar = await _db.Calendars
             .FirstOrDefaultAsync(c => c.AccountId == accountId && c.RemoteId == remote.RemoteId, ct)
             .ConfigureAwait(false);
 
+        var created = calendar is null;
         if (calendar is null)
         {
             calendar = new CalendarEntity
@@ -145,13 +149,18 @@ public sealed class CalendarSyncService : ICalendarSyncService
             _db.Calendars.Add(calendar);
         }
 
+        var changed = created
+            || calendar.Name != remote.Name
+            || (calendar.Color is null && remote.Color is not null)
+            || calendar.IsReadOnly != remote.IsReadOnly;
+
         calendar.Name = remote.Name;
         calendar.Color ??= remote.Color;
         calendar.IsReadOnly = remote.IsReadOnly;
         Stamp(calendar, deviceId);
 
         await _db.SaveChangesAsync(ct).ConfigureAwait(false);
-        return calendar;
+        return (calendar, changed);
     }
 
     private async Task UpsertEventAsync(

@@ -35,10 +35,14 @@ public sealed class OAuthFlowService : IOAuthFlowService
         _clock = clock ?? TimeProvider.System;
     }
 
+    /// <summary>Abandoned authorizations expire after this; the callback then reports "expired state".</summary>
+    private static readonly TimeSpan PendingTtl = TimeSpan.FromMinutes(15);
+
     public AuthChallenge BeginAuthorization(CredentialContext context, IReadOnlyList<string>? scopes)
     {
         if (context.Spec.Scheme != AuthScheme.OAuth2Pkce)
             throw new InvalidOperationException("BeginAuthorization is only valid for OAuth2 PKCE.");
+        EvictExpired();
         var authUrl = context.Spec.AuthorizationUrl
             ?? throw new InvalidOperationException("OAuth2 PKCE requires AuthSpec.AuthorizationUrl.");
         var client = context.OAuthClient
@@ -71,8 +75,11 @@ public sealed class OAuthFlowService : IOAuthFlowService
 
     public async Task<OAuthConnectResult> CompleteAuthorizationAsync(string state, string code, CancellationToken ct)
     {
-        if (!_pending.TryRemove(state, out var pending))
+        if (!_pending.TryRemove(state, out var pending) ||
+            _clock.GetUtcNow() - pending.CreatedAt > PendingTtl)
+        {
             throw new AuthBrokerException("Unknown or expired OAuth state — possible CSRF; restart the connect flow.");
+        }
 
         var context = pending.Context;
         var client = context.OAuthClient!;
@@ -131,6 +138,17 @@ public sealed class OAuthFlowService : IOAuthFlowService
             $"{Uri.EscapeDataString(kv.Key)}={Uri.EscapeDataString(kv.Value)}"));
         var separator = baseUrl.Contains('?', StringComparison.Ordinal) ? '&' : '?';
         return $"{baseUrl}{separator}{encoded}";
+    }
+
+    /// <summary>Drop pendings past their TTL so abandoned begins can't accumulate for the process lifetime.</summary>
+    private void EvictExpired()
+    {
+        var cutoff = _clock.GetUtcNow() - PendingTtl;
+        foreach (var (state, pending) in _pending)
+        {
+            if (pending.CreatedAt < cutoff)
+                _pending.TryRemove(state, out _);
+        }
     }
 
     private readonly record struct Pending(

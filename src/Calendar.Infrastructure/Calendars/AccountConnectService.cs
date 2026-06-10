@@ -267,16 +267,31 @@ public sealed class AccountConnectService : IAccountConnectService
 /// <summary>
 /// In-flight OAuth connects keyed by the broker-minted CSRF <c>state</c>. A singleton because the begin and
 /// callback requests arrive in different scopes (mirrors <c>OAuthFlowService</c>'s own pending map).
+/// Entries past the TTL are evicted on each add so abandoned begins can't accumulate forever.
 /// </summary>
 public sealed class PendingOAuthConnects
 {
+    private static readonly TimeSpan Ttl = TimeSpan.FromMinutes(15);
+
     private readonly ConcurrentDictionary<string, PendingOAuthConnect> _byState = new(StringComparer.Ordinal);
 
-    public void Add(string state, PendingOAuthConnect pending) => _byState[state] = pending;
+    public void Add(string state, PendingOAuthConnect pending)
+    {
+        var cutoff = DateTimeOffset.UtcNow - Ttl;
+        foreach (var (key, value) in _byState)
+        {
+            if (value.CreatedAtUtc < cutoff)
+                _byState.TryRemove(key, out _);
+        }
+        _byState[state] = pending;
+    }
 
     public bool TryRemove(string state, out PendingOAuthConnect pending) =>
-        _byState.TryRemove(state, out pending!);
+        _byState.TryRemove(state, out pending!) && pending.CreatedAtUtc >= DateTimeOffset.UtcNow - Ttl;
 }
 
 /// <summary>The account placeholder + user config captured between begin and callback.</summary>
-public sealed record PendingOAuthConnect(Guid AccountId, IReadOnlyDictionary<string, string>? Config);
+public sealed record PendingOAuthConnect(Guid AccountId, IReadOnlyDictionary<string, string>? Config)
+{
+    public DateTimeOffset CreatedAtUtc { get; init; } = DateTimeOffset.UtcNow;
+}

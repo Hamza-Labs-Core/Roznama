@@ -1,0 +1,183 @@
+@using Calendar.Web.Services
+@inject CalendarApiClient Api
+@inject Microsoft.JSInterop.IJSRuntime Js
+
+@*
+    Share dialog (UI-WIREFRAMES §7/§10, ARCHITECTURE.md §16). Creates a tokenized public ICS feed for a
+    calendar with a scope (FullDetails / FreeBusy) and an optional expiry, shows the /share/{token}.ics URL
+    with a copy button, and lists / revokes existing shares. Tokens are the capability — they're shown to
+    the owner here only.
+*@
+
+<div class="modal-backdrop" data-testid="share-dialog" @onclick="Close" @onkeydown="OnModalKey">
+    <div class="modal modal--share" @onclick:stopPropagation="true" role="dialog" aria-modal="true" aria-label="Share calendar">
+        <header class="modal__head">
+            <h2 class="modal__title">Share @CalendarName</h2>
+            <button class="btn btn--icon" aria-label="Close" @onclick="Close">✕</button>
+        </header>
+
+        <div class="modal__body">
+            <div class="share-create">
+                <label class="field">
+                    <span class="field__label">Scope</span>
+                    <select class="field__input" data-testid="share-scope" @bind="_scope" disabled="@_busy">
+                        <option value="FullDetails">Full details</option>
+                        <option value="FreeBusy">Free / busy only</option>
+                    </select>
+                </label>
+                <label class="field">
+                    <span class="field__label">Expires (optional)</span>
+                    <input class="field__input" type="date" data-testid="share-expiry"
+                           @bind="_expiry" disabled="@_busy" />
+                </label>
+                <button class="btn btn--primary" data-testid="share-create" @onclick="CreateAsync" disabled="@_busy">
+                    @(_busy ? "Creating…" : "Create link")
+                </button>
+            </div>
+
+            @if (_error is not null)
+            {
+                <p class="editor__error" data-testid="share-error">@_error</p>
+            }
+
+            <h3 class="share-list__title">Active links</h3>
+            @if (_shares.Count == 0)
+            {
+                <p class="share-list__empty" data-testid="share-empty">No share links yet.</p>
+            }
+            else
+            {
+                <ul class="share-list" data-testid="share-list">
+                    @foreach (var share in _shares)
+                    {
+                        <li class="share-list__item">
+                            <div class="share-list__meta">
+                                <span class="share-list__scope">@ScopeLabel(share.Scope)</span>
+                                @if (share.ExpiresAtUtc is { } exp)
+                                {
+                                    <span class="share-list__expiry">· expires @exp.ToLocalTime().ToString("d")</span>
+                                }
+                            </div>
+                            <div class="share-list__url-row">
+                                <input class="field__input share-list__url" readonly value="@share.Url"
+                                       data-testid="share-url" @onfocus="@(() => SelectAll(share))" />
+                                <button class="btn" data-testid="share-copy" @onclick="() => CopyAsync(share)">
+                                    @(_copiedId == share.Id ? "Copied" : "Copy")
+                                </button>
+                                <button class="btn btn--danger" data-testid="share-revoke"
+                                        @onclick="() => RevokeAsync(share)" disabled="@_busy">Revoke</button>
+                            </div>
+                        </li>
+                    }
+                </ul>
+            }
+        </div>
+
+        <footer class="modal__foot">
+            <span class="modal__foot-spacer"></span>
+            <button class="btn" @onclick="Close">Done</button>
+        </footer>
+    </div>
+</div>
+
+@code {
+    /// <summary>The calendar being shared. A share is bound to one calendar's projected feed.</summary>
+    [Parameter] public CalendarDto Calendar { get; set; } = default!;
+
+    /// <summary>Raised when the dialog is dismissed.</summary>
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    private List<ShareDto> _shares = new();
+    private string _scope = "FullDetails";
+    private DateTime? _expiry;
+    private bool _busy;
+    private string? _error;
+    private Guid? _copiedId;
+
+    private string CalendarName => Calendar?.Name ?? "calendar";
+
+    protected override async Task OnInitializedAsync() => await ReloadAsync();
+
+    private async Task ReloadAsync()
+    {
+        try
+        {
+            var all = await Api.GetSharesAsync();
+            _shares = all.Where(s => s.CalendarId == Calendar.Id).ToList();
+        }
+        catch
+        {
+            _shares = new();
+        }
+    }
+
+    private async Task CreateAsync()
+    {
+        _busy = true;
+        _error = null;
+        try
+        {
+            DateTimeOffset? expiresAt = _expiry is { } d
+                ? new DateTimeOffset(d.Date, TimeZoneInfo.Local.GetUtcOffset(d.Date)).ToUniversalTime()
+                : null;
+            await Api.CreateShareAsync(new CreateShareBody(Calendar.Id, _scope, expiresAt));
+            _expiry = null;
+            await ReloadAsync();
+        }
+        catch (Exception)
+        {
+            _error = "Could not create the share link. Please try again.";
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task RevokeAsync(ShareDto share)
+    {
+        _busy = true;
+        _error = null;
+        try
+        {
+            await Api.RevokeShareAsync(share.Id);
+            await ReloadAsync();
+        }
+        catch
+        {
+            _error = "Could not revoke that link.";
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task CopyAsync(ShareDto share)
+    {
+        try
+        {
+            await Js.InvokeVoidAsync("navigator.clipboard.writeText", share.Url);
+            _copiedId = share.Id;
+        }
+        catch
+        {
+            // Clipboard may be unavailable (e.g. insecure context); the URL is still selectable.
+        }
+    }
+
+    private async Task SelectAll(ShareDto share)
+    {
+        try { await Js.InvokeVoidAsync("eval", "document.activeElement && document.activeElement.select()"); }
+        catch { /* best-effort */ }
+    }
+
+    private Task Close() => OnClose.InvokeAsync();
+
+    /// <summary>Escape dismisses the dialog from anywhere inside it (a11y pass; UI-WIREFRAMES §7).</summary>
+    private Task OnModalKey(KeyboardEventArgs e) =>
+        e.Key == "Escape" ? Close() : Task.CompletedTask;
+
+    private static string ScopeLabel(string scope) =>
+        scope.Equals("FreeBusy", StringComparison.OrdinalIgnoreCase) ? "Free / busy" : "Full details";
+}

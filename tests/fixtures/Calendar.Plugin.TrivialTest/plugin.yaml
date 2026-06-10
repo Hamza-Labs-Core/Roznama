@@ -1,0 +1,21 @@
+# Manifest for the trivial test plugin (PLUGINS.md §3 shape). Exercised by the integration test that
+# proves the plugin host can discover → validate → load → bind → initialize → register a real bundle.
+id: org.unifiedcalendar.test.trivial
+name: Trivial Test Tiles
+version: 1.0.0
+sdkVersion: "1.x"
+kind: assembly
+assembly: Calendar.Plugin.TrivialTest.dll
+capabilities:
+  - geo.tiles
+publisher:
+  name: Unified Calendar Tests
+auth:
+  scheme: none
+network:
+  allow:
+    - tiles.example.test
+config:
+  jsonSchema: |
+    {"type":"object"}
+  required: []

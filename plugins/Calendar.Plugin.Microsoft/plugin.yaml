@@ -1,0 +1,34 @@
+# Microsoft Graph (Outlook / Microsoft 365 / work) plugin (microsoft-graph-plugin.md §13). Assembly plugin,
+# OAuth2 PKCE via the host broker; the plugin never sees tokens or secrets.
+id: org.unifiedcalendar.microsoft
+name: Microsoft 365 / Outlook
+version: 0.1.0
+sdkVersion: "1.x"
+kind: assembly
+assembly: Calendar.Plugin.Microsoft.dll
+capabilities: [calendar.read]            # calendar.write later
+publisher:
+  name: Unified Calendar
+
+auth:
+  scheme: oauth2-pkce                     # host broker runs Auth-Code + PKCE; plugin never sees tokens
+  authority: https://login.microsoftonline.com/common   # personal MSAs + work/school tenants
+  authorizationUrl: https://login.microsoftonline.com/common/oauth2/v2.0/authorize
+  tokenUrl:         https://login.microsoftonline.com/common/oauth2/v2.0/token
+  scopes:
+    - https://graph.microsoft.com/Calendars.Read        # + Calendars.ReadWrite in the write phase
+    - offline_access
+    - openid
+    - profile
+
+network:
+  allow:
+    - graph.microsoft.com
+    - login.microsoftonline.com
+
+config:                                   # minimal — auth carries identity
+  type: object
+  properties:
+    syncWindowMonthsBack:    { type: integer, title: "Sync window — months back",    default: 1,  minimum: 0 }
+    syncWindowMonthsForward: { type: integer, title: "Sync window — months forward", default: 12, minimum: 1 }
+  required: []

@@ -1,0 +1,501 @@
+/* Unified Calendar — Phase 0 app shell (UI-WIREFRAMES §1). 3-pane desktop frame. */
+
+:root {
+    --bg: #f6f7f9;
+    --panel: #ffffff;
+    --panel-alt: #fafbfc;     /* grid header */
+    --cell-muted: #fbfcfd;    /* days outside the current month */
+    --today-bg: #eef3ff;
+    --ink: #1f2430;
+    --muted: #8a93a3;
+    --line: #e3e7ed;
+    --accent: #3b6ef5;
+    --accent-ink: #ffffff;
+    color-scheme: light;
+}
+
+/* Dark palette. Applied when the OS prefers dark (unless the user pinned light),
+   or when the user explicitly toggles dark — see ThemeToggle. */
+@media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+        --bg: #0e1116;
+        --panel: #161b22;
+        --panel-alt: #1b212b;
+        --cell-muted: #11161d;
+        --today-bg: #1b2740;
+        --ink: #e6e9ef;
+        --muted: #8a93a3;
+        --line: #2a313c;
+        --accent: #5b82f6;
+        --accent-ink: #ffffff;
+        color-scheme: dark;
+    }
+}
+
+:root[data-theme="dark"] {
+    --bg: #0e1116;
+    --panel: #161b22;
+    --panel-alt: #1b212b;
+    --cell-muted: #11161d;
+    --today-bg: #1b2740;
+    --ink: #e6e9ef;
+    --muted: #8a93a3;
+    --line: #2a313c;
+    --accent: #5b82f6;
+    --accent-ink: #ffffff;
+    color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+    margin: 0;
+    height: 100%;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    color: var(--ink);
+    background: var(--bg);
+}
+
+#app { height: 100%; }
+
+.shell {
+    display: grid;
+    grid-template-columns: 260px 1fr 300px;
+    height: 100vh;
+    overflow: hidden;
+}
+
+/* ── Sidebar ── */
+.shell__sidebar {
+    background: var(--panel);
+    border-right: 1px solid var(--line);
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    overflow-y: auto;
+}
+
+.brand { font-weight: 700; font-size: 1.05rem; }
+
+.sidebar-group__title {
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--muted);
+    margin: 0 0 8px;
+}
+
+.sidebar-group__empty { font-size: 0.85rem; color: var(--muted); margin: 0 0 8px; }
+
+.sidebar-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.sidebar-list__item label { display: flex; align-items: center; gap: 8px; font-size: 0.9rem; }
+
+.shell__status { margin-top: auto; font-size: 0.8rem; color: var(--muted); }
+
+/* ── Canvas ── */
+.shell__canvas { display: flex; flex-direction: column; min-width: 0; overflow: hidden; }
+
+.toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 16px;
+    padding: 12px 16px;
+    background: var(--panel);
+    border-bottom: 1px solid var(--line);
+}
+
+.view-switcher { display: inline-flex; flex: 0 0 auto; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.view-switcher__btn {
+    border: 0;
+    background: transparent;
+    padding: 6px 12px;
+    font-size: 0.85rem;
+    cursor: pointer;
+    color: var(--ink);
+}
+.view-switcher__btn:not(:last-child) { border-right: 1px solid var(--line); }
+.view-switcher__btn.is-active { background: var(--accent); color: var(--accent-ink); }
+
+.date-nav { display: flex; align-items: center; gap: 8px; }
+.date-nav__label { font-weight: 600; min-width: 9.5rem; text-align: center; }
+
+.toolbar__actions { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+
+.btn {
+    border: 1px solid var(--line);
+    background: var(--panel);
+    border-radius: 8px;
+    padding: 6px 12px;
+    font-size: 0.85rem;
+    cursor: pointer;
+    color: var(--ink);
+}
+.btn:disabled { opacity: 0.5; cursor: default; }
+.btn--ghost { border-style: dashed; color: var(--muted); }
+.btn--icon { padding: 6px 10px; line-height: 1; }
+
+.canvas-body { flex: 1; padding: 16px; overflow: auto; }
+
+/* ── Month grid ── */
+.month-grid { display: flex; flex-direction: column; height: 100%; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: var(--panel); }
+.month-grid__head { display: grid; grid-template-columns: repeat(7, 1fr); background: var(--panel-alt); border-bottom: 1px solid var(--line); }
+.month-grid__dow { padding: 8px; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); text-align: right; }
+.month-grid__body { display: grid; grid-template-columns: repeat(7, 1fr); grid-auto-rows: 1fr; flex: 1; }
+.month-grid__cell { border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); padding: 6px; min-height: 84px; }
+.month-grid__cell:nth-child(7n) { border-right: 0; }
+.month-grid__daynum { font-size: 0.8rem; color: var(--ink); }
+.month-grid__cell--muted { background: var(--cell-muted); }
+.month-grid__cell--muted .month-grid__daynum { color: var(--muted); }
+.month-grid__cell--today { background: var(--today-bg); }
+.month-grid__cell--today .month-grid__daynum { font-weight: 700; color: var(--accent); }
+
+/* Compact variant for the multi-month planner: content-height with small fixed rows. */
+.month-grid--compact { height: auto; }
+.month-grid--compact .month-grid__dow { padding: 4px 6px; font-size: 0.62rem; }
+.month-grid--compact .month-grid__body { flex: none; grid-auto-rows: 30px; }
+.month-grid--compact .month-grid__cell { min-height: 0; padding: 2px 4px; }
+.month-grid--compact .month-grid__daynum { font-size: 0.7rem; }
+
+/* ── Multi-month planner ── */
+.multi-month {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 16px;
+    align-content: start;
+}
+.multi-month__card { display: flex; flex-direction: column; gap: 8px; }
+.multi-month__title { font-size: 0.9rem; font-weight: 600; margin: 0; }
+
+/* ── Event chips ── */
+.month-grid__cell { display: flex; flex-direction: column; gap: 2px; overflow: hidden; }
+.chip {
+    font-size: 0.72rem;
+    line-height: 1.2;
+    padding: 2px 6px;
+    border-left: 3px solid var(--accent);
+    border-radius: 3px;
+    background: var(--panel-alt);
+    color: var(--ink);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: flex;
+    gap: 4px;
+    align-items: center;
+}
+.chip__title { overflow: hidden; text-overflow: ellipsis; }
+.chip__dup { color: var(--muted); font-size: 0.66rem; flex: 0 0 auto; }
+.chip--more { border-left-color: transparent; color: var(--muted); background: transparent; padding-left: 9px; }
+
+.month-grid__dots { display: flex; flex-wrap: wrap; gap: 2px; margin-top: 2px; }
+.month-grid__dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; }
+
+/* ── Add-account ── */
+.add-account { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+.add-account__input {
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 6px 10px;
+    font-size: 0.82rem;
+    background: var(--panel);
+    color: var(--ink);
+}
+.add-account__error { color: #d05050; font-size: 0.78rem; margin: 0; }
+.add-account__notice { color: #34a853; font-size: 0.78rem; margin: 0; }
+.add-account__provider { width: 100%; text-align: left; }
+.add-account__caldav { display: flex; flex-direction: column; gap: 6px; }
+
+/* ── Toolbar search (Phase 6 polish) ── */
+.toolbar__search { position: relative; flex: 0 1 220px; }
+.toolbar__search-input {
+    width: 100%;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 6px 10px;
+    font-size: 0.82rem;
+    background: var(--panel);
+    color: var(--ink);
+}
+.toolbar__search-results {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    right: 0;
+    z-index: 40;
+    margin: 0;
+    padding: 4px;
+    list-style: none;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+    max-height: 320px;
+    overflow-y: auto;
+}
+.toolbar__search-hit {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    width: 100%;
+    text-align: left;
+    border: 0;
+    background: transparent;
+    color: var(--ink);
+    padding: 6px 8px;
+    border-radius: 6px;
+    cursor: pointer;
+}
+.toolbar__search-hit:hover { background: rgba(124, 77, 255, 0.12); }
+.toolbar__search-title { font-size: 0.82rem; font-weight: 600; }
+.toolbar__search-meta { font-size: 0.72rem; opacity: 0.7; }
+
+.swatch { width: 10px; height: 10px; border-radius: 3px; display: inline-block; flex: 0 0 auto; }
+.dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 4px; }
+.dot--ok { background: #34a853; }
+.dot--bad { background: #d05050; }
+
+/* ── A11y: a clear keyboard-focus ring on interactive chips and controls ── */
+.chip--clickable:focus-visible,
+.toolbar__search-hit:focus-visible,
+.btn:focus-visible {
+    outline: 2px solid #3b6ef5;
+    outline-offset: 1px;
+}
+
+/* ── Plugins panel (marketplace) ── */
+.plugins-panel__row { display: flex; align-items: center; gap: 6px; }
+.plugins-panel__name { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.plugins-panel__version { font-size: 0.72rem; opacity: 0.6; }
+
+/* ── Duplicates dialog (ARCHITECTURE §12) ── */
+.chip__dup--clickable { border: 0; cursor: pointer; font: inherit; }
+.duplicates__hint { font-size: 0.82rem; opacity: 0.8; margin: 0 0 8px; }
+.duplicates__list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.duplicates__row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 8px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+}
+.duplicates__row--canonical { border-color: #34a853; }
+.duplicates__who { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.duplicates__title { font-weight: 600; font-size: 0.86rem; }
+.duplicates__meta { font-size: 0.74rem; opacity: 0.7; }
+.duplicates__actions { display: flex; gap: 6px; flex: 0 0 auto; }
+
+/* ── Event editor reminders ── */
+.editor__reminders { list-style: none; margin: 0 0 6px; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.editor__reminder { display: flex; align-items: center; justify-content: space-between; font-size: 0.82rem; }
+.editor__reminder-add { display: flex; gap: 6px; }
+.editor__reminder-add .field__input { flex: 1 1 auto; }
+
+/* ── Placeholder views (deliberate empty state for not-yet-built views) ── */
+.placeholder { display: flex; align-items: center; justify-content: center; height: 100%; padding: 24px; }
+.placeholder__card {
+    max-width: 380px;
+    text-align: center;
+    padding: 28px 24px;
+    border: 1px dashed var(--line);
+    border-radius: 12px;
+    background: var(--panel);
+}
+.placeholder__badge {
+    display: inline-block;
+    font-size: 0.68rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--accent);
+    border: 1px solid var(--accent);
+    border-radius: 999px;
+    padding: 2px 10px;
+    margin-bottom: 12px;
+}
+.placeholder__title { font-size: 1.05rem; font-weight: 600; margin: 0 0 8px; text-transform: capitalize; }
+.placeholder__hint { font-size: 0.85rem; color: var(--muted); margin: 0; line-height: 1.5; }
+.placeholder__hint strong { color: var(--ink); }
+
+/* ── Inspector ── */
+.shell__inspector { background: var(--panel); border-left: 1px solid var(--line); padding: 16px; overflow-y: auto; }
+.inspector__title { font-size: 0.95rem; margin: 0 0 12px; }
+.inspector__empty { font-size: 0.85rem; color: var(--muted); }
+
+/* ── Map view (UI-WIREFRAMES §6) — theme-aware via the shared CSS variables ── */
+.map-view { display: flex; flex-direction: column; height: 100%; min-height: 420px; }
+.map-view__bar {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 6px 12px; font-size: 0.8rem; color: var(--muted);
+    border-bottom: 1px solid var(--line); background: var(--panel-alt);
+}
+.map-view__count { font-variant-numeric: tabular-nums; }
+.map-view__canvas-wrap { position: relative; flex: 1 1 auto; min-height: 320px; }
+.map-view__canvas { position: absolute; inset: 0; background: var(--cell-muted); }
+.map-view__empty {
+    position: absolute; inset: 0; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; text-align: center;
+    padding: 24px; pointer-events: none; color: var(--muted);
+    background: color-mix(in srgb, var(--panel) 70%, transparent);
+}
+.map-view__empty-title { font-size: 1.0rem; font-weight: 600; color: var(--ink); margin: 0 0 6px; }
+.map-view__empty-hint { font-size: 0.85rem; margin: 0; max-width: 32ch; line-height: 1.5; }
+.map-view__scrubber {
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+    padding: 8px 12px; border-top: 1px solid var(--line); background: var(--panel-alt);
+    font-size: 0.8rem; color: var(--muted);
+}
+.map-view__scrubber-label { font-weight: 600; color: var(--ink); }
+.map-view__range { flex: 1 1 120px; accent-color: var(--accent); min-width: 80px; }
+.map-view__scrubber-value { font-variant-numeric: tabular-nums; min-width: 5ch; }
+
+/* ── Clickable event chips (UI-WIREFRAMES §2 → §7 inspector) ── */
+.chip--clickable { cursor: pointer; }
+.chip--clickable:hover { background: var(--today-bg); }
+
+/* ── Sidebar calendar row with a share affordance ── */
+.sidebar-list__item--cal { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.sidebar-list__item--cal label { flex: 1 1 auto; min-width: 0; }
+.btn--share { padding: 2px 6px; font-size: 0.85rem; border-color: transparent; background: transparent; opacity: 0.5; }
+.sidebar-list__item--cal:hover .btn--share { opacity: 1; }
+
+/* ── Buttons (variants used by the editor / share dialog) ── */
+.btn--primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.btn--primary:disabled { opacity: 0.5; }
+.btn--danger { color: #d05050; border-color: color-mix(in srgb, #d05050 40%, var(--line)); }
+
+/* ── Modal scaffolding (event editor + share dialog, UI-WIREFRAMES §7) ── */
+.modal-backdrop {
+    position: fixed; inset: 0; z-index: 50;
+    background: rgba(0, 0, 0, 0.45);
+    display: flex; align-items: center; justify-content: center;
+    padding: 24px;
+}
+.modal {
+    background: var(--panel);
+    color: var(--ink);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    width: 100%;
+    max-width: 460px;
+    max-height: 90vh;
+    display: flex; flex-direction: column;
+    overflow: hidden;
+    box-shadow: 0 18px 50px rgba(0, 0, 0, 0.35);
+}
+.modal--share { max-width: 540px; }
+.modal__head {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 16px; border-bottom: 1px solid var(--line);
+}
+.modal__title { font-size: 1rem; margin: 0; }
+.modal__body { padding: 16px; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; }
+.modal__foot {
+    display: flex; align-items: center; gap: 8px;
+    padding: 12px 16px; border-top: 1px solid var(--line);
+}
+.modal__foot-spacer { flex: 1 1 auto; }
+
+/* ── Form fields ── */
+.field { display: flex; flex-direction: column; gap: 4px; }
+.field__label { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); }
+.field__input {
+    border: 1px solid var(--line); border-radius: 8px;
+    padding: 7px 10px; font-size: 0.88rem;
+    background: var(--panel); color: var(--ink); width: 100%;
+}
+.field__static { display: flex; align-items: center; gap: 8px; font-size: 0.9rem; padding: 4px 0; }
+.field--check { flex-direction: row; align-items: center; gap: 8px; font-size: 0.9rem; }
+.field-row { display: flex; gap: 12px; }
+.field-row .field { flex: 1 1 0; }
+
+.editor__error { color: #d05050; font-size: 0.82rem; margin: 0; }
+.editor__notice { font-size: 0.88rem; color: var(--muted); line-height: 1.5; margin: 0; }
+
+/* ── Share dialog ── */
+.share-create { display: grid; grid-template-columns: 1fr 1fr auto; gap: 10px; align-items: end; }
+.share-list__title { font-size: 0.82rem; margin: 6px 0 0; }
+.share-list__empty { font-size: 0.85rem; color: var(--muted); margin: 0; }
+.share-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.share-list__item { display: flex; flex-direction: column; gap: 4px; border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
+.share-list__meta { font-size: 0.78rem; color: var(--muted); }
+.share-list__scope { color: var(--ink); font-weight: 600; }
+.share-list__url-row { display: flex; gap: 6px; align-items: center; }
+.share-list__url { flex: 1 1 auto; font-size: 0.78rem; font-family: ui-monospace, monospace; }
+
+@media (max-width: 900px) {
+    .shell { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
+    .shell__sidebar, .shell__inspector { display: none; }
+    .share-create { grid-template-columns: 1fr; }
+}
+
+/* ── Multi-month price overlay (UI-WIREFRAMES §3, travel-fares-plugin.md §10.2) ── */
+.prices-control { display: inline-flex; align-items: center; gap: 4px; }
+.prices-toggle { display: inline-flex; align-items: center; gap: 4px; font-size: 0.82rem; color: var(--ink); cursor: pointer; }
+.prices-control__iata {
+    width: 3.4em; text-transform: uppercase; text-align: center; font-size: 0.78rem;
+    padding: 3px 4px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface, var(--bg)); color: var(--ink);
+}
+.prices-control__arrow { color: var(--muted); font-size: 0.8rem; }
+
+/* The per-day price label + heat tint. The tint is a faint wash of the cell's --price-heat hue. */
+.month-grid__cell { position: relative; }
+.month-grid__cell[style*="--price-heat"]::after {
+    content: ""; position: absolute; inset: 0; pointer-events: none;
+    background: var(--price-heat); opacity: 0.10;
+}
+.month-grid__price {
+    align-self: flex-start; position: relative; z-index: 1;
+    font-size: 0.66rem; font-variant-numeric: tabular-nums; line-height: 1.1;
+    color: var(--muted); font-weight: 600;
+}
+.month-grid--compact .month-grid__price { font-size: 0.6rem; }
+.month-grid__price--cheapest { color: #167a3b; font-weight: 800; }
+:root[data-theme="dark"] .month-grid__price--cheapest,
+:root:not([data-theme="light"]) .month-grid__price--cheapest { color: #4ade80; }
+.month-grid__price--stale { color: var(--muted); opacity: 0.7; text-decoration: underline dotted; }
+.month-grid__cell--cheapest { outline: 2px solid #2fa14f; outline-offset: -2px; }
+
+/* ── Fare-watch panel (UI-WIREFRAMES §3, travel-fares-plugin.md §10) ── */
+.fare-panel { margin-top: 16px; border-top: 1px solid var(--line); padding-top: 12px; }
+.fare-panel__head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.fare-panel__title { font-size: 0.82rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); margin: 0; }
+.fare-panel__empty { font-size: 0.84rem; color: var(--muted); margin: 4px 0; }
+.fare-panel__bell {
+    position: relative; background: none; border: 0; cursor: pointer; font-size: 1rem; line-height: 1;
+    padding: 2px 4px; border-radius: 6px; color: var(--muted);
+}
+.fare-panel__bell.is-active { color: var(--accent); }
+.fare-panel__badge {
+    position: absolute; top: -4px; right: -4px; min-width: 14px; height: 14px; padding: 0 3px;
+    border-radius: 7px; background: #e23b3b; color: #fff; font-size: 0.62rem; line-height: 14px; text-align: center;
+}
+.fare-notifications { list-style: none; margin: 0 0 10px; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.fare-notifications__empty { font-size: 0.82rem; color: var(--muted); }
+.fare-notifications__item { display: flex; flex-direction: column; font-size: 0.78rem; padding: 4px 6px; background: var(--cell-muted); border-radius: 6px; }
+.fare-notifications__time { font-size: 0.68rem; color: var(--muted); }
+
+.fare-watches { list-style: none; margin: 0 0 10px; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.fare-watch { display: grid; grid-template-columns: 1fr auto auto; align-items: center; gap: 6px; padding: 6px; border: 1px solid var(--line); border-radius: 8px; }
+.fare-watch__main { display: flex; flex-direction: column; min-width: 0; }
+.fare-watch__route { font-size: 0.84rem; font-weight: 600; color: var(--ink); }
+.fare-watch__dates { font-size: 0.72rem; color: var(--muted); }
+.fare-watch__price { display: flex; align-items: center; gap: 6px; }
+.fare-watch__low { font-size: 0.86rem; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--ink); }
+.fare-watch__spark { width: 60px; height: 18px; color: var(--muted); }
+.fare-watch__spark.is-down { color: #2fa14f; }
+.fare-watch__spark.is-up { color: #e23b3b; }
+.fare-watch__del { color: var(--muted); }
+
+.fare-form { display: flex; flex-direction: column; gap: 6px; }
+.fare-form__kind { display: flex; gap: 12px; font-size: 0.8rem; color: var(--ink); }
+.fare-form__row { display: flex; gap: 6px; }
+.fare-form__input {
+    flex: 1 1 auto; min-width: 0; padding: 5px 7px; font-size: 0.8rem;
+    border: 1px solid var(--line); border-radius: 6px; background: var(--surface, var(--bg)); color: var(--ink);
+}
+.fare-form__input--pax { flex: 0 0 4em; }
+.fare-form__submit { flex: 1 1 auto; }
+.fare-form__error { font-size: 0.78rem; color: #e23b3b; margin: 0; }

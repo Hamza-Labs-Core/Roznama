@@ -1,0 +1,28 @@
+# ICS / iCalendar feed plugin (ics-plugin.md §15). Light assembly plugin (needs Ical.Net), auth none.
+id: org.unifiedcalendar.ics
+name: ICS / iCalendar feed
+version: 1.0.0
+sdkVersion: "1.x"
+kind: assembly
+assembly: Calendar.Plugin.Ics.dll
+capabilities:
+  - calendar.read
+publisher:
+  name: Unified Calendar
+auth:
+  scheme: none
+network:
+  allow:
+    - "*"
+config:
+  jsonSchema: |
+    {
+      "type": "object",
+      "properties": {
+        "feedUrl": { "type": "string", "title": "Feed URL" },
+        "refreshMinutes": { "type": "integer", "title": "Refresh interval (minutes)", "default": 60, "minimum": 15 }
+      },
+      "required": ["feedUrl"]
+    }
+  required:
+    - feedUrl

@@ -1,0 +1,43 @@
+# MapLibre / OSM basemap plugin (geo-tiles-plugin.md §2, §8). Supplies the Map view's basemap as a
+# MapLibre StyleDescriptor. A geo.tiles plugin contributes almost no runtime code — the browser renders
+# via MapLibre GL JS over JS interop; this plugin just hands the host a resolved style + attribution.
+#
+# This first-party plugin is an ASSEMBLY plugin only so it can carry a bundled default style as an
+# embedded resource (the §10 fallback). Self-hosted / keyed providers are plain declarative connectors.
+# AuthScheme.None: the bundled MapLibre demo style needs no key (geo-tiles-plugin.md §5).
+id: org.unifiedcalendar.tiles.maplibre
+name: MapLibre / OSM tiles
+version: 1.0.0
+sdkVersion: "1.x"
+kind: assembly
+assembly: Calendar.Plugin.MapLibre.dll
+capabilities:
+  - geo.tiles
+publisher:
+  name: Unified Calendar
+auth:
+  scheme: none
+network:
+  # The bundled default style references the serverless MapLibre demo tileset (no key, GitHub-Pages
+  # hosted). Self-hosted deployments re-point styleUrl at their own TileServer GL / PMTiles host and
+  # tighten this allowlist accordingly (geo-tiles-plugin.md §5, §8).
+  allow:
+    - demotiles.maplibre.org
+config:
+  jsonSchema: |
+    {
+      "type": "object",
+      "properties": {
+        "styleUrl": {
+          "type": "string",
+          "title": "Style URL",
+          "description": "TileServer GL style.json or a .pmtiles-backed style. Empty = bundled default."
+        },
+        "attribution": {
+          "type": "string",
+          "title": "Attribution",
+          "default": "© OpenStreetMap contributors"
+        }
+      }
+    }
+  required: []

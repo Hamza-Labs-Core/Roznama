@@ -257,6 +257,11 @@ out-of-process. A *signature that claims a trusted publisher but fails verificat
 code, so an unsigned community connector still runs in-engine (its risk is data, not code —
 [PLUGINS.md §2](PLUGINS.md#2-the-two-plugin-kinds)); the signature still gates *provenance* claims.
 
+> **Status:** the out-of-process worker (§8.4) is the deferred half of
+> [ADR-0007](adr/0007-alc-isolation-out-of-process.md). Until it lands, the marketplace **rejects**
+> community-tier assembly bundles outright (fail-closed) rather than loading untrusted code in-proc;
+> the `Marketplace:AllowUnsigned` local-dev escape hatch is the only exception.
+
 ### 3.4 Permission-manifest parsing
 
 `PermissionParser` turns the manifest into the enforced permission set:

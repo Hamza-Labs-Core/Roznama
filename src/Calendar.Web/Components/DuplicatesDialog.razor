@@ -1,0 +1,129 @@
+@using Calendar.Web.Services
+@inject CalendarApiClient Api
+
+@*
+    Duplicate group inspector (ARCHITECTURE §12; the Phase 1 merge/split follow-up). Opened from a chip's
+    "+N" badge: lists every copy with its source calendar/account, marks the one currently shown, and offers
+    the two reversible corrections — "show this copy" (SetCanonical) and "not a duplicate" (NeverMerge,
+    splitting the copy out of the group). The server regroups immediately; the parent reloads on change.
+*@
+
+<div class="modal-backdrop" data-testid="duplicates-dialog" @onclick="Close" @onkeydown="OnModalKey">
+    <div class="modal modal--duplicates" @onclick:stopPropagation="true" role="dialog" aria-modal="true"
+         aria-label="Duplicate copies">
+        <header class="modal__head">
+            <h2 class="modal__title">Duplicate copies</h2>
+            <button class="btn btn--icon" aria-label="Close" @onclick="Close">✕</button>
+        </header>
+
+        <div class="modal__body">
+            @if (_loading)
+            {
+                <p class="inspector__empty">Loading…</p>
+            }
+            else if (_group is null || _group.Members.Count == 0)
+            {
+                <p class="inspector__empty" data-testid="duplicates-empty">
+                    This event isn't grouped with any duplicates (anymore).
+                </p>
+            }
+            else
+            {
+                <p class="duplicates__hint">
+                    These @_group.Members.Count copies were detected as the same event. One shows on the
+                    grid; the rest collapse behind its +@(_group.Members.Count - 1) badge.
+                </p>
+                <ul class="duplicates__list">
+                    @foreach (var member in _group.Members)
+                    {
+                        <li class="duplicates__row @(member.IsCanonical ? "duplicates__row--canonical" : "")"
+                            data-testid="duplicate-member">
+                            <div class="duplicates__who">
+                                <span class="duplicates__title">@member.Title</span>
+                                <span class="duplicates__meta">
+                                    @member.CalendarName · @member.AccountName
+                                    @(member.IsCanonical ? " · shown" : "")
+                                </span>
+                            </div>
+                            <div class="duplicates__actions">
+                                @if (!member.IsCanonical)
+                                {
+                                    <button class="btn" data-testid="duplicate-make-canonical" disabled="@_busy"
+                                            @onclick="() => MakeCanonicalAsync(member)">Show this copy</button>
+                                }
+                                <button class="btn" data-testid="duplicate-split" disabled="@_busy"
+                                        title="This copy is actually a different event"
+                                        @onclick="() => SplitAsync(member)">Not a duplicate</button>
+                            </div>
+                        </li>
+                    }
+                </ul>
+            }
+
+            @if (_error is not null)
+            {
+                <p class="editor__error" role="alert" data-testid="duplicates-error">@_error</p>
+            }
+        </div>
+
+        <footer class="modal__foot">
+            <span class="modal__foot-spacer"></span>
+            <button class="btn" @onclick="Close">Close</button>
+        </footer>
+    </div>
+</div>
+
+@code {
+    /// <summary>Any event in the group (the canonical the user clicked); the group is resolved from it.</summary>
+    [Parameter] public Guid EventId { get; set; }
+
+    /// <summary>Raised after an override changed the grouping so the parent can re-project.</summary>
+    [Parameter] public EventCallback OnChanged { get; set; }
+
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    private DuplicateGroupDto? _group;
+    private bool _loading = true;
+    private bool _busy;
+    private string? _error;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _loading = true;
+        _group = await Api.GetDuplicateGroupAsync(EventId);
+        _loading = false;
+    }
+
+    private async Task MakeCanonicalAsync(DuplicateMemberDto member) =>
+        await ApplyAsync("SetCanonical", new[] { member.Uid });
+
+    private async Task SplitAsync(DuplicateMemberDto member) =>
+        await ApplyAsync("NeverMerge", new[] { member.Uid });
+
+    private async Task ApplyAsync(string kind, IReadOnlyList<string> uids)
+    {
+        _busy = true;
+        _error = null;
+        try
+        {
+            if (await Api.CreateDuplicateOverrideAsync(kind, uids))
+            {
+                _group = await Api.GetDuplicateGroupAsync(EventId);   // reflect the regrouped result.
+                await OnChanged.InvokeAsync();
+            }
+            else
+            {
+                _error = "Could not apply the change. Try again.";
+            }
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private Task Close() => OnClose.InvokeAsync();
+
+    private Task OnModalKey(KeyboardEventArgs e) =>
+        e.Key == "Escape" ? Close() : Task.CompletedTask;
+}

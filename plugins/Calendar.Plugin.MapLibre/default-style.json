@@ -1,0 +1,43 @@
+{
+  "version": 8,
+  "name": "Unified Calendar — bundled default",
+  "metadata": {
+    "unifiedcalendar:bundled": true
+  },
+  "sources": {
+    "maplibre-demo": {
+      "type": "vector",
+      "url": "https://demotiles.maplibre.org/tiles/tiles.json"
+    }
+  },
+  "glyphs": "https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf",
+  "layers": [
+    {
+      "id": "background",
+      "type": "background",
+      "paint": {
+        "background-color": "#d8e6f0"
+      }
+    },
+    {
+      "id": "countries-fill",
+      "type": "fill",
+      "source": "maplibre-demo",
+      "source-layer": "countries",
+      "paint": {
+        "fill-color": "#f4f4ee",
+        "fill-outline-color": "#b6c2cc"
+      }
+    },
+    {
+      "id": "countries-boundary",
+      "type": "line",
+      "source": "maplibre-demo",
+      "source-layer": "countries",
+      "paint": {
+        "line-color": "#9aa7b1",
+        "line-width": 1
+      }
+    }
+  ]
+}

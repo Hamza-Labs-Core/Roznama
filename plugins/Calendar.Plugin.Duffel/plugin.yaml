@@ -1,0 +1,33 @@
+id: org.unifiedcalendar.duffel
+name: Duffel
+version: 0.1.0
+sdkVersion: "1.x"
+kind: assembly
+assembly: Calendar.Plugin.Duffel.dll
+# A single assembly bundle implementing BOTH interchangeable pricing capabilities over Duffel's
+# versioned REST/JSON API (travel-fares-plugin.md §4/§5). Both ride the fallback aggregator.
+capabilities: [flight.price, stay.price]
+publisher:
+  name: Unified Calendar
+
+auth:
+  # The broker injects: Authorization: Bearer <token>. The same access-token family covers
+  # Flights + Stays (travel-fares-plugin.md §3). The plugin never holds the key — it calls
+  # IPluginHost.Auth.ApplyAsync per request.
+  scheme: apikey
+  in: header
+  name: Authorization
+  format: "Bearer {token}"
+
+network:
+  allow:
+    - "api.duffel.com"                  # host blocks all other egress
+
+config:
+  type: object
+  properties:
+    environment: { type: string, enum: [test, live], default: test, title: "Environment" }
+    market:      { type: string, default: "US",  title: "Market" }
+    currency:    { type: string, default: "USD", title: "Currency" }
+    radiusKm:    { type: integer, default: 5, title: "Stay search radius (km)" }
+  required: [environment]

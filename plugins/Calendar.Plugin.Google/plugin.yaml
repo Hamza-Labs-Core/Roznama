@@ -1,0 +1,31 @@
+id: org.unifiedcalendar.google
+name: Google Calendar
+version: 0.1.0
+sdkVersion: "1.x"
+kind: assembly
+assembly: Calendar.Plugin.Google.dll
+capabilities: [calendar.read]            # calendar.write later
+publisher:
+  name: Unified Calendar
+
+auth:
+  scheme: oauth2-pkce                     # broker runs Auth-Code + PKCE; plugin never sees tokens
+  authorizationUrl: https://accounts.google.com/o/oauth2/v2/auth
+  tokenUrl: https://oauth2.googleapis.com/token
+  scopes: ["https://www.googleapis.com/auth/calendar.readonly"]   # + .../auth/calendar.events for write
+  params:                                 # broker passes these to get a refresh token
+    access_type: offline
+    prompt: consent
+
+network:
+  allow:
+    - "www.googleapis.com"                # Calendar API + batch
+    - "oauth2.googleapis.com"             # token endpoint (broker)
+    - "accounts.google.com"               # authorization endpoint (broker)
+
+config:                                   # minimal — auth carries identity
+  type: object
+  properties:
+    syncWindowMonthsPast:   { type: integer, title: "Months in the past",   default: 12 }
+    syncWindowMonthsFuture: { type: integer, title: "Months in the future", default: 24 }
+  required: []

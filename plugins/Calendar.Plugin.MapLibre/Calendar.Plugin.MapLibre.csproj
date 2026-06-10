@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <!-- No third-party NuGet deps: a geo.tiles plugin is overwhelmingly declarative config
+         (geo-tiles-plugin.md §1). The bundled default style ships as an embedded resource. -->
+    <CopyLocalLockFileAssemblies>false</CopyLocalLockFileAssemblies>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The SDK contract is supplied by the host (shared ALC boundary), so don't copy it into the bundle. -->
+    <ProjectReference Include="..\..\src\Calendar.Plugin.Abstractions\Calendar.Plugin.Abstractions.csproj"
+                      Private="false" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="plugin.yaml" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The bundled default MapLibre style (geo-tiles-plugin.md §10 fallback). Embedded so the
+         resolved StyleDescriptor needs no external file at runtime. -->
+    <EmbeddedResource Include="default-style.json" />
+  </ItemGroup>
+
+</Project>

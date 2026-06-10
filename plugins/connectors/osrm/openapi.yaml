@@ -1,0 +1,28 @@
+openapi: 3.0.0
+info:
+  title: OSRM
+  description: >-
+    Open Source Routing Machine route service (geo-routing-plugin.md §3.1). Self-hosted only:
+    no quotas, no key, fully private — drive/bike/walk, NO transit and NO live traffic. The
+    profile is baked into the prepared dataset (one container/port per profile), so the route
+    path is fixed here to the driving profile; re-point the server url + this allowlist at your
+    own instance (e.g. http://osrm-car:5000) and clone the bundle per profile if you need
+    bike/foot. Coordinates are lon,lat (longitude first — the OSRM footgun).
+  version: "1.0"
+servers:
+  - url: https://osrm.internal.example.com
+paths:
+  "/route/v1/driving/{coordinates}":
+    get:
+      operationId: route
+      summary: Route between two coordinates (lon,lat;lon,lat) → duration + encoded polyline.
+      parameters:
+        - { name: coordinates, in: path, required: true, schema: { type: string } }
+        - { name: overview, in: query, schema: { type: string } }
+        - { name: geometries, in: query, schema: { type: string } }
+      responses:
+        "200":
+          description: route result (code, routes[])
+          content:
+            application/json:
+              schema: { type: object }

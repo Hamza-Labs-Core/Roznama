@@ -1,0 +1,81 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <ItemGroup>
+    <ProjectReference Include="..\Calendar.Infrastructure\Calendar.Infrastructure.csproj" />
+    <ProjectReference Include="..\Calendar.Web\Calendar.Web.csproj" />
+  </ItemGroup>
+
+  <!--
+    First-party plugin bundles. Each is BUILT but NOT referenced (ReferenceOutputAssembly="false") — they
+    load at runtime via the collectible ALC. The CopyPluginBundles target below copies every bundle listed
+    here into <out>/plugins/<BundleId>, so adding a new first-party plugin is just one more entry: set the
+    %(BundleId) metadata to the output folder name (the directory the host enumerates) and it is copied with
+    no further csproj edits.
+  -->
+  <ItemGroup>
+    <FirstPartyPlugin Include="..\..\plugins\Calendar.Plugin.Ics\Calendar.Plugin.Ics.csproj"
+                      ReferenceOutputAssembly="false" Private="false" BundleId="ics" />
+    <FirstPartyPlugin Include="..\..\plugins\Calendar.Plugin.CalDav\Calendar.Plugin.CalDav.csproj"
+                      ReferenceOutputAssembly="false" Private="false" BundleId="caldav" />
+    <FirstPartyPlugin Include="..\..\plugins\Calendar.Plugin.Google\Calendar.Plugin.Google.csproj"
+                      ReferenceOutputAssembly="false" Private="false" BundleId="google" />
+    <FirstPartyPlugin Include="..\..\plugins\Calendar.Plugin.Microsoft\Calendar.Plugin.Microsoft.csproj"
+                      ReferenceOutputAssembly="false" Private="false" BundleId="microsoft" />
+    <FirstPartyPlugin Include="..\..\plugins\Calendar.Plugin.MapLibre\Calendar.Plugin.MapLibre.csproj"
+                      ReferenceOutputAssembly="false" Private="false" BundleId="maplibre" />
+    <FirstPartyPlugin Include="..\..\plugins\Calendar.Plugin.Duffel\Calendar.Plugin.Duffel.csproj"
+                      ReferenceOutputAssembly="false" Private="false" BundleId="duffel" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="@(FirstPartyPlugin)" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.Server" Version="9.0.0" />
+  </ItemGroup>
+
+  <!--
+    Copy every first-party plugin bundle (dll + deps.json + plugin.yaml + its NuGet closure, e.g. Ical.Net)
+    into <out>/plugins/<BundleId>. The SDK contract assembly is excluded — it lives in the host's default ALC
+    and is the shared boundary, so a bundle must not ship its own copy. Generalized from the original
+    ICS-only target so the next provider plugins (Google/Microsoft) need only a FirstPartyPlugin entry.
+  -->
+  <Target Name="CopyPluginBundles" AfterTargets="Build">
+    <ItemGroup>
+      <PluginBundleFile Include="..\..\plugins\%(FirstPartyPlugin.Filename)\bin\$(Configuration)\net9.0\**\*"
+                        Exclude="..\..\plugins\%(FirstPartyPlugin.Filename)\bin\$(Configuration)\net9.0\Calendar.Plugin.Abstractions.*"
+                        BundleId="%(FirstPartyPlugin.BundleId)" />
+    </ItemGroup>
+    <Copy SourceFiles="@(PluginBundleFile)"
+          DestinationFiles="@(PluginBundleFile->'$(OutDir)plugins\%(BundleId)\%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+  </Target>
+
+  <!--
+    Static declarative-connector bundles (geo-geocoding-places-plugin.md §10). Unlike assembly plugins
+    these are DATA, not projects: a plain folder with plugin.yaml (kind: declarative) + an OpenAPI yaml,
+    no csproj/bin. Each StaticConnectorBundle points at such a folder; %(BundleId) is the output directory
+    the host enumerates. The CopyStaticConnectorBundles target copies the folder verbatim into
+    <out>/plugins/<BundleId>, alongside the assembly bundles, so the host discovers it identically.
+  -->
+  <ItemGroup>
+    <StaticConnectorBundle Include="..\..\plugins\connectors\nominatim\**\*"
+                           BundleId="geo-nominatim" SourceDir="..\..\plugins\connectors\nominatim" />
+    <StaticConnectorBundle Include="..\..\plugins\connectors\osrm\**\*"
+                           BundleId="geo-osrm" SourceDir="..\..\plugins\connectors\osrm" />
+  </ItemGroup>
+
+  <Target Name="CopyStaticConnectorBundles" AfterTargets="Build">
+    <Copy SourceFiles="@(StaticConnectorBundle)"
+          DestinationFiles="@(StaticConnectorBundle->'$(OutDir)plugins\%(BundleId)\%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+  </Target>
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+</Project>

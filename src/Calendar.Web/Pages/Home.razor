@@ -1,0 +1,617 @@
+@page "/"
+@implements IAsyncDisposable
+@using Calendar.Web.Components
+@inject CalendarApiClient Api
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+
+<PageTitle>Unified Calendar</PageTitle>
+
+<div class="shell">
+
+    @* ── Sidebar: Accounts / Calendars / Categories (UI-WIREFRAMES §1) ── *@
+    <aside class="shell__sidebar" aria-label="Accounts, calendars, and categories">
+        <div class="brand">◷ Unified Calendar</div>
+
+        <section class="sidebar-group">
+            <h2 class="sidebar-group__title">Accounts</h2>
+            @if (_accounts.Count == 0)
+            {
+                <p class="sidebar-group__empty">No accounts yet.</p>
+            }
+            else
+            {
+                <ul class="sidebar-list">
+                    @foreach (var account in _accounts)
+                    {
+                        <li class="sidebar-list__item">
+                            <span class="dot dot--ok"></span> @account.DisplayName
+                        </li>
+                    }
+                </ul>
+            }
+
+            <div class="add-account">
+                <input class="add-account__input" placeholder="Paste an ICS feed URL…"
+                       @bind="_feedUrl" @bind:event="oninput" disabled="@_busy" />
+                <button class="btn" @onclick="ConnectAsync" disabled="@(_busy || string.IsNullOrWhiteSpace(_feedUrl))">
+                    @(_busy ? "Adding…" : "+ Add ICS feed")
+                </button>
+
+                @* OAuth providers (Google, Microsoft, …): one button each; the host returns a redirect
+                   challenge and the browser comes back via /api/accounts/oauth/callback (API.md). *@
+                @foreach (var plugin in OAuthProviders)
+                {
+                    <button class="btn add-account__provider" data-testid="connect-oauth-@plugin.Id"
+                            @onclick="() => ConnectOAuthAsync(plugin)" disabled="@_busy">
+                        Connect @plugin.Name
+                    </button>
+                }
+
+                @* CalDAV (iCloud / Fastmail / Nextcloud): server preset + username + app-specific password. *@
+                @if (CalDavPlugin is { } caldav)
+                {
+                    <button class="btn add-account__provider" data-testid="connect-caldav-toggle"
+                            @onclick="() => _calDavOpen = !_calDavOpen" disabled="@_busy">
+                        @(_calDavOpen ? "Cancel CalDAV" : $"Connect {caldav.Name}…")
+                    </button>
+                    @if (_calDavOpen)
+                    {
+                        <div class="add-account__caldav" data-testid="caldav-form">
+                            <select class="add-account__input" @bind="_calDavPreset" data-testid="caldav-preset">
+                                <option value="https://caldav.icloud.com">iCloud</option>
+                                <option value="https://caldav.fastmail.com/dav/">Fastmail</option>
+                                <option value="">Custom server…</option>
+                            </select>
+                            @if (string.IsNullOrEmpty(_calDavPreset))
+                            {
+                                <input class="add-account__input" placeholder="https://host/remote.php/dav/"
+                                       @bind="_calDavServer" @bind:event="oninput" />
+                            }
+                            <input class="add-account__input" placeholder="Username / Apple ID"
+                                   @bind="_calDavUser" @bind:event="oninput" data-testid="caldav-user" />
+                            <input class="add-account__input" type="password" placeholder="App-specific password"
+                                   @bind="_calDavPassword" @bind:event="oninput" data-testid="caldav-password" />
+                            <button class="btn" data-testid="caldav-connect" @onclick="() => ConnectCalDavAsync(caldav)"
+                                    disabled="@(_busy || !CanConnectCalDav)">
+                                @(_busy ? "Connecting…" : "Connect")
+                            </button>
+                        </div>
+                    }
+                }
+
+                @if (_error is not null)
+                {
+                    <p class="add-account__error" role="alert">@_error</p>
+                }
+                @if (_connectNotice is not null)
+                {
+                    <p class="add-account__notice" data-testid="connect-notice" role="status">@_connectNotice</p>
+                }
+            </div>
+        </section>
+
+        <section class="sidebar-group">
+            <h2 class="sidebar-group__title">Calendars</h2>
+            @if (_calendars.Count == 0)
+            {
+                <p class="sidebar-group__empty">Connect an account to see calendars.</p>
+            }
+            else
+            {
+                <ul class="sidebar-list">
+                    @foreach (var cal in _calendars)
+                    {
+                        <li class="sidebar-list__item sidebar-list__item--cal">
+                            <label>
+                                <input type="checkbox" checked="@cal.IsVisible"
+                                       @onchange="e => ToggleCalendarAsync(cal, (bool)e.Value!)" />
+                                <span class="swatch" style="background:@SwatchColor(cal)"></span>
+                                @cal.Name
+                            </label>
+                            <button class="btn btn--icon btn--share" title="Share @cal.Name"
+                                    aria-label="Share @cal.Name" @onclick="() => OpenShare(cal)">🔗</button>
+                        </li>
+                    }
+                </ul>
+            }
+        </section>
+
+        <section class="sidebar-group">
+            <h2 class="sidebar-group__title">Categories</h2>
+            <ul class="sidebar-list">
+                @foreach (var cat in _categories)
+                {
+                    <li class="sidebar-list__item">
+                        <label>
+                            <input type="checkbox" checked="@cat.IsVisible"
+                                   @onchange="e => ToggleCategoryAsync(cat, (bool)e.Value!)" />
+                            @cat.Name
+                        </label>
+                    </li>
+                }
+            </ul>
+        </section>
+
+        <PluginsPanel />
+
+        <footer class="shell__status" data-testid="status-footer">
+            ⛅ offline · <span data-testid="outbox-indicator">↻ (@_outbox.Pending)</span>
+        </footer>
+    </aside>
+
+    @* ── View canvas ── *@
+    <main class="shell__canvas">
+        <header class="toolbar">
+            <div class="view-switcher" role="tablist" aria-label="Calendar view">
+                @foreach (var option in CalendarViews.All)
+                {
+                    <button class="view-switcher__btn @(option.View == _view ? "is-active" : "")"
+                            role="tab" aria-selected="@(option.View == _view)"
+                            @onclick="() => _view = option.View">
+                        @option.Label
+                    </button>
+                }
+            </div>
+
+            <div class="date-nav">
+                <button class="btn btn--icon" aria-label="Previous month" @onclick="PrevMonth">‹</button>
+                <span class="date-nav__label">@_month.ToString("MMMM yyyy")</span>
+                <button class="btn btn--icon" aria-label="Next month" @onclick="NextMonth">›</button>
+                <button class="btn" @onclick="Today">Today</button>
+            </div>
+
+            <div class="toolbar__search" data-testid="search-box" role="search">
+                <input class="toolbar__search-input" placeholder="Search events…" data-testid="search-input"
+                       aria-label="Search events" value="@_searchQuery" @oninput="OnSearchInput" />
+                @if (_searchResults.Count > 0)
+                {
+                    <ul class="toolbar__search-results" data-testid="search-results" aria-label="Search results">
+                        @foreach (var hit in _searchResults)
+                        {
+                            <li>
+                                <button class="toolbar__search-hit" @onclick="() => JumpToAsync(hit)">
+                                    <span class="toolbar__search-title">@hit.Title</span>
+                                    <span class="toolbar__search-meta">
+                                        @hit.StartUtc.ToString("MMM d, yyyy") · @hit.CalendarName
+                                    </span>
+                                </button>
+                            </li>
+                        }
+                    </ul>
+                }
+            </div>
+
+            <div class="toolbar__actions">
+                @if (_view == CalendarView.MultiMonth)
+                {
+                    <div class="prices-control" data-testid="prices-control">
+                        <label class="prices-toggle" data-testid="prices-toggle" title="Overlay cheapest flight prices per date">
+                            <input type="checkbox" checked="@_showPrices" @onchange="TogglePricesAsync" />
+                            Prices
+                        </label>
+                        @if (_showPrices)
+                        {
+                            <input class="prices-control__iata" placeholder="JFK" maxlength="3"
+                                   data-testid="prices-origin" @bind="_overlayOrigin" @bind:event="oninput" />
+                            <span class="prices-control__arrow">→</span>
+                            <input class="prices-control__iata" placeholder="LHR" maxlength="3"
+                                   data-testid="prices-dest" @bind="_overlayDest" @bind:event="oninput" />
+                            <button class="btn btn--icon" title="Load prices" aria-label="Load prices"
+                                    data-testid="prices-load" @onclick="LoadOverlayAsync"
+                                    disabled="@(!CanLoadOverlay || _overlayBusy)">@(_overlayBusy ? "…" : "↻")</button>
+                        }
+                    </div>
+                }
+                <ThemeToggle />
+                <button class="btn" data-testid="new-event" @onclick="OpenNewEvent"
+                        disabled="@(!HasWritableCalendar)"
+                        title="@(HasWritableCalendar ? "New event" : "Connect a writable calendar to create events")">
+                    + New
+                </button>
+            </div>
+        </header>
+
+        <section class="canvas-body">
+            @switch (_view)
+            {
+                case CalendarView.Month:
+                    <MonthGrid Month="_month" Events="_events" OnEventClick="OpenEditEvent"
+                               OnDuplicateClick="OpenDuplicates" />
+                    break;
+                case CalendarView.MultiMonth:
+                    <MultiMonthGrid Start="_month" Count="6" Events="_events"
+                                    Prices="@(_showPrices ? _overlay?.Cells.ToDictionary(c => c.Date) : null)"
+                                    Currency="@(_overlay?.Currency ?? "USD")" />
+                    break;
+                case CalendarView.Map:
+                    <MapView WindowStart="_month.AddMonths(-1)" WindowDays="365" />
+                    break;
+                default:
+                    <div class="placeholder">
+                        <div class="placeholder__card">
+                            <span class="placeholder__badge">Coming soon</span>
+                            <p class="placeholder__title">@_view view</p>
+                            <p class="placeholder__hint">
+                                This view arrives in a later phase — it will project the same shared event
+                                stream. <strong>Month</strong> and <strong>Multi-month</strong> are live now.
+                            </p>
+                        </div>
+                    </div>
+                    break;
+            }
+        </section>
+    </main>
+
+    @* ── Inspector ── *@
+    <aside class="shell__inspector" aria-label="Inspector">
+        <h2 class="inspector__title">Inspector</h2>
+        <p class="inspector__empty">Select an event, trip, or place to see details, travel time, and prices here.</p>
+        <FareWatchPanel RefreshToken="_notificationsToken" />
+    </aside>
+
+    @* ── Modals: event editor (create/edit) + share dialog (UI-WIREFRAMES §7) ── *@
+    @if (_editorOpen)
+    {
+        <EventEditor Event="_editing" Calendars="_calendars" DefaultDate="_month"
+                     OnSaved="OnEventSavedAsync" OnClose="CloseEditor" />
+    }
+    @if (_sharing is not null)
+    {
+        <ShareDialog Calendar="_sharing" OnClose="CloseShare" />
+    }
+    @if (_duplicatesFor is not null)
+    {
+        <DuplicatesDialog EventId="_duplicatesFor.Value" OnChanged="ReloadEventsAsync"
+                          OnClose="() => _duplicatesFor = null" />
+    }
+
+</div>
+
+@code {
+    private CalendarView _view = CalendarView.Month;
+    private DateOnly _month = FirstOfThisMonth();
+
+    private IReadOnlyList<EventDto> _events = Array.Empty<EventDto>();
+    private IReadOnlyList<AccountDto> _accounts = Array.Empty<AccountDto>();
+    private IReadOnlyList<CalendarDto> _calendars = Array.Empty<CalendarDto>();
+    private IReadOnlyList<CategoryDto> _categories = Array.Empty<CategoryDto>();
+
+    private string _feedUrl = string.Empty;
+    private bool _busy;
+    private string? _error;
+    private string? _connectNotice;
+
+    // Generic connect (API.md "accounts — connect flow"): providers come from the installed-plugin list.
+    private IReadOnlyList<PluginDto> _plugins = Array.Empty<PluginDto>();
+    private bool _calDavOpen;
+    private string _calDavPreset = "https://caldav.icloud.com";
+    private string _calDavServer = string.Empty;
+    private string _calDavUser = string.Empty;
+    private string _calDavPassword = string.Empty;
+
+    private IEnumerable<PluginDto> OAuthProviders => _plugins.Where(p =>
+        p.State == "Running" && p.AuthScheme == "OAuth2Pkce" && p.Capabilities.Contains("calendar.read"));
+
+    private PluginDto? CalDavPlugin => _plugins.FirstOrDefault(p =>
+        p.State == "Running" && p.AuthScheme == "AppPassword" && p.Capabilities.Contains("calendar.read"));
+
+    private string CalDavServerUrl => string.IsNullOrEmpty(_calDavPreset) ? _calDavServer.Trim() : _calDavPreset;
+
+    private bool CanConnectCalDav =>
+        !string.IsNullOrWhiteSpace(CalDavServerUrl) &&
+        !string.IsNullOrWhiteSpace(_calDavUser) &&
+        !string.IsNullOrWhiteSpace(_calDavPassword);
+
+    private OutboxStatusDto _outbox = new(0, 0, 0, 0, 0, 0);
+
+    // Multi-month price overlay (UI-WIREFRAMES §3, travel-fares-plugin.md §10.2). The "Prices" switch on the Multi
+    // view toggles a per-date cheapest-flight overlay for a chosen route. Empty when no provider is configured.
+    private bool _showPrices;
+    private bool _overlayBusy;
+    private string _overlayOrigin = string.Empty;
+    private string _overlayDest = string.Empty;
+    private FareOverlayDto? _overlay;
+
+    private bool CanLoadOverlay => _overlayOrigin.Trim().Length >= 3 && _overlayDest.Trim().Length >= 3;
+
+    // Editor + share modal state (UI-WIREFRAMES §7).
+    private bool _editorOpen;
+    private EventDto? _editing;       // null while open ⇒ create mode.
+    private CalendarDto? _sharing;
+
+    private bool HasWritableCalendar => _calendars.Any(c => !c.IsReadOnly);
+
+    // ── Toolbar search (Phase 6 polish): debounce-free substring search; pick a hit to jump the planner. ──
+    private string _searchQuery = string.Empty;
+    private IReadOnlyList<SearchResultDto> _searchResults = Array.Empty<SearchResultDto>();
+
+    private async Task OnSearchInput(ChangeEventArgs e)
+    {
+        _searchQuery = e.Value?.ToString() ?? string.Empty;
+        _searchResults = _searchQuery.Trim().Length >= 2
+            ? await Api.SearchEventsAsync(_searchQuery.Trim())
+            : Array.Empty<SearchResultDto>();
+    }
+
+    private async Task JumpToAsync(SearchResultDto hit)
+    {
+        _month = new DateOnly(hit.StartUtc.Year, hit.StartUtc.Month, 1);
+        _searchQuery = string.Empty;
+        _searchResults = Array.Empty<SearchResultDto>();
+        _view = CalendarView.Month;
+        await ReloadEventsAsync();
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        ReadConnectNotice();
+        await ReloadAllAsync();
+    }
+
+    // ── Live refresh (UI.md §9): subscribe to GET /sync/stream; each named event reloads just enough. ──
+    private IJSObjectReference? _sseModule;
+    private DotNetObjectReference<Home>? _selfRef;
+    private int _sseConnectionId;
+    private int _notificationsToken;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+            return;
+        try
+        {
+            _sseModule = await JS.InvokeAsync<IJSObjectReference>("import", "./js/sse.js");
+            _selfRef = DotNetObjectReference.Create(this);
+            _sseConnectionId = await _sseModule.InvokeAsync<int>("connect", _selfRef);
+        }
+        catch
+        {
+            // No SSE (test harness, prerender, old browser) — the app still works with manual reloads.
+        }
+    }
+
+    [JSInvokable]
+    public async Task OnServerEvent(string type, string json)
+    {
+        switch (type)
+        {
+            case "eventsChanged":
+                await ReloadEventsAsync();
+                _calendars = await Api.GetCalendarsAsync();   // a sync may have added calendars too.
+                break;
+            case "syncProgress":
+                _accounts = await Api.GetAccountsAsync();     // sidebar health (status / last-sync).
+                break;
+            case "notificationsChanged":
+                _notificationsToken++;      // FareWatchPanel reloads its bell/notifications list.
+                break;
+        }
+        StateHasChanged();
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        try
+        {
+            if (_sseModule is not null)
+            {
+                await _sseModule.InvokeVoidAsync("disconnect", _sseConnectionId);
+                await _sseModule.DisposeAsync();
+            }
+        }
+        catch (JSDisconnectedException) { /* circuit gone */ }
+        catch (Exception) { /* best-effort teardown */ }
+        _selfRef?.Dispose();
+    }
+
+    private async Task ReloadAllAsync()
+    {
+        _accounts = await Api.GetAccountsAsync();
+        _calendars = await Api.GetCalendarsAsync();
+        _categories = await Api.GetCategoriesAsync();
+        try { _plugins = await Api.GetPluginsAsync(); } catch { /* providers list is progressive enhancement */ }
+        await ReloadEventsAsync();
+        await ReloadOutboxAsync();
+    }
+
+    // The OAuth callback redirects back with ?connect=ok|denied|failed (Program.cs callback route).
+    private void ReadConnectNotice()
+    {
+        var query = new Uri(Nav.Uri).Query;
+        if (query.Contains("connect=ok")) _connectNotice = "Account connected.";
+        else if (query.Contains("connect=denied")) _connectNotice = "Connect was cancelled.";
+        else if (query.Contains("connect=failed")) _error = "Connecting the account failed. Try again.";
+    }
+
+    private async Task ConnectOAuthAsync(PluginDto plugin)
+    {
+        _busy = true;
+        _error = null;
+        try
+        {
+            var result = await Api.ConnectAccountAsync(plugin.Id);
+            if (result?.AuthChallenge is { } challenge)
+                Nav.NavigateTo(challenge.RedirectUrl, forceLoad: true);  // off to the provider's consent page
+            else if (result is null)
+                _error = $"Could not start the {plugin.Name} connect (is an OAuth client configured?).";
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task ConnectCalDavAsync(PluginDto plugin)
+    {
+        _busy = true;
+        _error = null;
+        try
+        {
+            var config = new Dictionary<string, string>
+            {
+                ["serverUrl"] = CalDavServerUrl,
+                ["username"] = _calDavUser.Trim(),
+                ["password"] = _calDavPassword,
+            };
+            var result = await Api.ConnectAccountAsync(plugin.Id, name: null, config);
+            if (result?.Id is not null)
+            {
+                _calDavOpen = false;
+                _calDavUser = _calDavPassword = _calDavServer = string.Empty;
+                _connectNotice = "Account connected.";
+                await ReloadAllAsync();
+            }
+            else
+            {
+                _error = "Could not connect. Check the server URL, username, and app password.";
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task ReloadOutboxAsync()
+    {
+        try { _outbox = await Api.GetOutboxStatusAsync(); }
+        catch { /* keep the last-known count if the status call fails */ }
+    }
+
+    // ── Event editor ──
+    private void OpenNewEvent()
+    {
+        if (!HasWritableCalendar) return;
+        _editing = null;
+        _editorOpen = true;
+    }
+
+    private void OpenEditEvent(EventDto ev)
+    {
+        _editing = ev;
+        _editorOpen = true;
+    }
+
+    private void CloseEditor()
+    {
+        _editorOpen = false;
+        _editing = null;
+    }
+
+    private async Task OnEventSavedAsync()
+    {
+        CloseEditor();
+        await ReloadEventsAsync();
+        await ReloadOutboxAsync();
+    }
+
+    // ── Sharing ──
+    private void OpenShare(CalendarDto cal) => _sharing = cal;
+    private void CloseShare() => _sharing = null;
+
+    // ── Duplicates: a chip's "+N" badge opens the group inspector (ARCHITECTURE §12). ──
+    private Guid? _duplicatesFor;
+    private void OpenDuplicates(EventDto ev) => _duplicatesFor = ev.Id;
+
+    private async Task ReloadEventsAsync()
+    {
+        // One generous window covers both the month and 6-month multi-month views.
+        var from = new DateTimeOffset(_month.AddMonths(-1).ToDateTime(TimeOnly.MinValue), TimeSpan.Zero);
+        var to = new DateTimeOffset(_month.AddMonths(8).ToDateTime(TimeOnly.MinValue), TimeSpan.Zero);
+        _events = await Api.GetEventsAsync(from, to);
+    }
+
+    private async Task ConnectAsync()
+    {
+        _busy = true;
+        _error = null;
+        try
+        {
+            if (!await Api.ConnectIcsAsync(_feedUrl.Trim(), name: null))
+                _error = "Could not connect that feed. Check the URL.";
+            else
+                _feedUrl = string.Empty;
+            await ReloadAllAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task ToggleCalendarAsync(CalendarDto cal, bool isVisible)
+    {
+        await Api.SetCalendarVisibilityAsync(cal.Id, isVisible);
+        _calendars = await Api.GetCalendarsAsync();
+        await ReloadEventsAsync();
+    }
+
+    private async Task ToggleCategoryAsync(CategoryDto cat, bool isVisible)
+    {
+        await Api.SetCategoryVisibilityAsync(cat.Id, isVisible);
+        _categories = await Api.GetCategoriesAsync();
+        await ReloadEventsAsync();
+    }
+
+    private static string SwatchColor(CalendarDto cal)
+    {
+        if (!string.IsNullOrWhiteSpace(cal.Color)) return cal.Color!;
+        var hue = (uint)cal.Id.GetHashCode() % 360;
+        return $"hsl({hue} 60% 45%)";
+    }
+
+    private static DateOnly FirstOfThisMonth()
+    {
+        var today = DateOnly.FromDateTime(DateTime.Today);
+        return new DateOnly(today.Year, today.Month, 1);
+    }
+
+    private async Task PrevMonth() { _month = _month.AddMonths(-1); await ReloadEventsAsync(); if (_showPrices) await LoadOverlayAsync(); }
+    private async Task NextMonth() { _month = _month.AddMonths(1); await ReloadEventsAsync(); if (_showPrices) await LoadOverlayAsync(); }
+    private async Task Today() { _month = FirstOfThisMonth(); await ReloadEventsAsync(); if (_showPrices) await LoadOverlayAsync(); }
+
+    // ── Price overlay (Multi view) ──
+    private async Task TogglePricesAsync(ChangeEventArgs e)
+    {
+        _showPrices = (bool)e.Value!;
+        if (_showPrices && CanLoadOverlay)
+            await LoadOverlayAsync();
+        else if (!_showPrices)
+            _overlay = null;
+    }
+
+    private async Task LoadOverlayAsync()
+    {
+        if (!CanLoadOverlay) return;
+        _overlayBusy = true;
+        try
+        {
+            // The visible window: the 6 months the planner renders from _month.
+            var from = _month;
+            var to = _month.AddMonths(6).AddDays(-1);
+            _overlay = await Api.GetFlightOverlayAsync(
+                _overlayOrigin.Trim().ToUpperInvariant(), _overlayDest.Trim().ToUpperInvariant(), from, to);
+        }
+        catch
+        {
+            _overlay = null; // degrade gracefully: no overlay, no crash.
+        }
+        finally
+        {
+            _overlayBusy = false;
+        }
+    }
+}

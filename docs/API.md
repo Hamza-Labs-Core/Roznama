@@ -32,10 +32,11 @@ shapes, and conventions. (Internal/local API; not a public API. Versioned at `/a
 
 | Method | Path | Purpose |
 | --- | --- | --- |
-| `GET` | `/plugins` | Installed plugins: `{ id, name, version, kind, capabilities[], status, configSchema }`. |
-| `GET` | `/plugins/{id}` | One plugin incl. JSON Schema for its config + auth scheme. |
-| `POST` | `/plugins` | Install from `{ source: url|file, signature? }`; validates SDK ver/permissions. |
-| `DELETE` | `/plugins/{id}` | Uninstall (unloads its ALC). |
+| `GET` | `/plugins` | Installed plugins: `{ id, name, version, kind, state, capabilities[], authScheme, faultReason? }`. |
+| `GET` | `/plugins/{id}` | One plugin incl. JSON Schema for its config (`configSchema`, `configRequired`) + auth scheme. |
+| `POST` | `/plugins/install` | Install from `{ downloadUrl, sha256?, signature?, publisherName? }`; integrity + signature + trust gates. |
+| `GET` | `/marketplace?url=` | A registry index's entries (or `Marketplace:RegistryUrl` when configured). |
+| `DELETE` | `/plugins/{id}` | Uninstall (unloads its ALC); `409` while accounts still use it. |
 | `GET` | `/capabilities` | Map of `capability → [pluginId]` (drives "what can the app do right now"). |
 
 The `configSchema` is what the UI renders as the dynamic settings/connect form (see [PLUGINS.md §9](PLUGINS.md#9-schema-driven-configuration-ui)).
@@ -57,7 +58,7 @@ Adding an account is plugin-driven: read the plugin's auth scheme, run it, store
 
 ```
 POST /accounts {pluginId:"...google...", config:{}}
-  → 200 { authChallenge: { kind:"oauth2", redirectUrl } }   # UI opens redirectUrl
+  → 200 { id, authChallenge: { kind:"oauth2", redirectUrl, state } }   # UI opens redirectUrl
 GET  /accounts/oauth/callback?code=...&state=...            # host exchanges code, stores token
   → 302 back to app; account now status:"connected"
 ```
@@ -114,10 +115,13 @@ the host routes to the owning calendar's plugin; offline edits queue and replay.
 
 | Method | Path | Purpose |
 | --- | --- | --- |
-| `GET` | `/events/{id}/duplicates` | Members of the group + why they matched (signature, fields). |
-| `POST` | `/duplicates/{groupId}/canonical` | Set which event shows (`{ eventId }`). |
-| `POST` | `/duplicates/merge` | Force-merge `{ eventIds[] }`. |
-| `POST` | `/duplicates/split` | Never-merge override `{ eventIds[] }`. |
+| `GET` | `/events/{id}/duplicates` | The group's members with provenance + the canonical marked. |
+| `GET` | `/duplicates/overrides` | Active user overrides `{ id, kind, uids[], reason?, createdAtUtc }`. |
+| `POST` | `/duplicates/overrides` | Create one: `{ kind: ForceMerge\|NeverMerge\|SetCanonical, uids[], reason? }`. |
+| `DELETE` | `/duplicates/overrides/{id}` | Undo (tombstone) — the automatic grouping returns. |
+
+Overrides bind by **iCal UID** (not row id) so they survive a provider re-sync, and every mutation
+regroups immediately (see [ARCHITECTURE §12](ARCHITECTURE.md#12-duplicates)).
 
 ## Places, geocoding & routing
 
@@ -167,10 +171,12 @@ The planner also exposes precomputed legs: `GET /events/{id}/commute` → the `R
 
 | Method | Path | Purpose |
 | --- | --- | --- |
-| `GET` | `/sync/status` | Per-account `{ lastSyncAt, state, nextRunAt, lastError? }`. |
-| `POST` | `/sync/run` | Trigger a full sync cycle. |
-| `GET` | `/sync/stream` (SSE) | Server-sent events: live `eventsChanged` / `syncProgress` for instant UI refresh. |
-| `POST` | `/cloud/enable` | Opt into E2E sync: `{ passphrase }` (key derived client-side; host stores ciphertext only). |
+| `GET` | `/sync/status` | Per-account `{ accountId, displayName, pluginId, accountStatus, state, lastSyncAtUtc, nextRunAtUtc, backoffUntilUtc?, attempts, lastError? }`. |
+| `POST` | `/sync/run?force=` | Trigger a sweep (force ignores due/backoff). `POST /accounts/{id}/sync` syncs one account. |
+| `GET` | `/sync/stream` (SSE) | Server-sent events: live `eventsChanged` / `syncProgress` / `notificationsChanged`. |
+| `GET` | `/cloud/status` | This device's enrollment `{ enabled, relayUrl, spaceId, lastPulledSeq, lastSyncAtUtc }`. |
+| `POST` | `/cloud/enable` | Opt in: `{ passphrase, relayUrl, spaceId?, spaceToken? }` — omit space fields to create a new space (the token is returned ONCE); pass them to join from another device. The key derives client-side; the relay stores ciphertext only. |
+| `POST` | `/cloud/sync` | Run one push+pull round now. `POST /cloud/disable` forgets the enrollment. |
 
 > The SSE stream is what keeps views live: a background sync delta pushes `eventsChanged{range}` and the
 > UI re-projects only affected cells/legs (see [UI.md §9](UI.md#9-performance)).

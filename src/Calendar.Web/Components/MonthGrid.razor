@@ -1,0 +1,244 @@
+@using Calendar.Web.Services
+
+@* Month grid (UI-WIREFRAMES §2). Renders event chips colored by source calendar over the date cells. *@
+
+<div class="month-grid @(Compact ? "month-grid--compact" : "")" role="grid" aria-label="@Month.ToString("MMMM yyyy")">
+    <div class="month-grid__head" role="row">
+        @foreach (var day in DayHeaders)
+        {
+            <div class="month-grid__dow" role="columnheader">@day</div>
+        }
+    </div>
+    <div class="month-grid__body">
+        @foreach (var cell in Cells)
+        {
+            var dayEvents = EventsOn(cell.Date);
+            var price = PriceOn(cell.Date);
+            <div class="month-grid__cell @(cell.InMonth ? "" : "month-grid__cell--muted") @(cell.IsToday ? "month-grid__cell--today" : "") @(price is { Cheapest: true } ? "month-grid__cell--cheapest" : "")"
+                 role="gridcell"
+                 style="@HeatStyle(price)"
+                 aria-label="@CellAria(cell.Date, price)">
+                <span class="month-grid__daynum">@cell.Date.Day</span>
+
+                @if (price is not null)
+                {
+                    <span class="month-grid__price @(price.Cheapest ? "month-grid__price--cheapest" : "") @(price.Stale ? "month-grid__price--stale" : "")"
+                          data-testid="price-label"
+                          title="@PriceTitle(price)">
+                        @price.Label
+                    </span>
+                }
+
+                @if (Compact)
+                {
+                    @if (dayEvents.Count > 0)
+                    {
+                        <div class="month-grid__dots">
+                            @foreach (var ev in dayEvents.Take(4))
+                            {
+                                <span class="month-grid__dot" style="background:@Color(ev)" title="@ev.Title"></span>
+                            }
+                        </div>
+                    }
+                }
+                else
+                {
+                    @foreach (var ev in dayEvents.Take(3))
+                    {
+                        <div class="chip @(OnEventClick.HasDelegate ? "chip--clickable" : "")"
+                             style="border-left-color:@Color(ev)" title="@ChipTitle(ev)"
+                             role="@(OnEventClick.HasDelegate ? "button" : null)"
+                             tabindex="@(OnEventClick.HasDelegate ? "0" : null)"
+                             aria-label="@(OnEventClick.HasDelegate ? ChipAria(ev) : null)"
+                             @onclick="() => OnEventClick.InvokeAsync(ev)"
+                             @onkeydown="e => OnChipKeyAsync(e, ev)">
+                            <span class="chip__title">@ev.Title</span>
+                            @if (ev.DuplicateCount > 0)
+                            {
+                                @* The badge opens the duplicate-group inspector when the host wires it (§12). *@
+                                @if (OnDuplicateClick.HasDelegate)
+                                {
+                                    <button class="chip__dup chip__dup--clickable" data-testid="chip-dup"
+                                            title="@ev.DuplicateCount duplicate copies — inspect"
+                                            aria-label="@ev.DuplicateCount duplicate copies of @ev.Title — inspect"
+                                            @onclick:stopPropagation="true"
+                                            @onclick="() => OnDuplicateClick.InvokeAsync(ev)">+@ev.DuplicateCount</button>
+                                }
+                                else
+                                {
+                                    <span class="chip__dup">+@ev.DuplicateCount</span>
+                                }
+                            }
+                        </div>
+                    }
+                    @if (dayEvents.Count > 3)
+                    {
+                        <div class="chip chip--more">+@(dayEvents.Count - 3) more</div>
+                    }
+                }
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    /// <summary>The month to render (any day within it).</summary>
+    [Parameter] public DateOnly Month { get; set; } = DateOnly.FromDateTime(DateTime.Today);
+
+    /// <summary>Compact mode: small fixed-height cells for the multi-month planner (UI-WIREFRAMES §3).</summary>
+    [Parameter] public bool Compact { get; set; }
+
+    /// <summary>Projected events to paint over the grid (already filtered/deduped by the host).</summary>
+    [Parameter] public IReadOnlyList<EventDto>? Events { get; set; }
+
+    /// <summary>
+    /// Raised when an event chip is clicked, opening it in the editor/inspector (UI-WIREFRAMES §2/§7).
+    /// When no handler is bound the chips are inert (e.g. the compact multi-month planner).
+    /// </summary>
+    [Parameter] public EventCallback<EventDto> OnEventClick { get; set; }
+
+    /// <summary>Raised when a chip's "+N" badge is clicked, opening the duplicate-group inspector (§12).</summary>
+    [Parameter] public EventCallback<EventDto> OnDuplicateClick { get; set; }
+
+    /// <summary>
+    /// The cheapest flight/stay price per date for the multi-month overlay (travel-fares-plugin.md §10.2,
+    /// UI-WIREFRAMES §3). Each painted cell shows a small price label + a heat tint; the cheapest date in range is
+    /// emphasized. Null/empty ⇒ no overlay (no provider configured) — the grid paints nothing.
+    /// </summary>
+    [Parameter] public IReadOnlyDictionary<DateOnly, OverlayCellDto>? Prices { get; set; }
+
+    /// <summary>The display currency for overlay labels (defaults to USD).</summary>
+    [Parameter] public string Currency { get; set; } = "USD";
+
+    private static readonly string[] DayHeaders = { "Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun" };
+
+    // Min/max over the painted prices so a cell can compute its heat tint and "cheapest" emphasis.
+    private decimal _priceMin;
+    private decimal _priceMax;
+
+    protected override void OnParametersSet()
+    {
+        if (Prices is { Count: > 0 })
+        {
+            _priceMin = Prices.Values.Min(c => c.Price);
+            _priceMax = Prices.Values.Max(c => c.Price);
+        }
+        else
+        {
+            _priceMin = _priceMax = 0m;
+        }
+    }
+
+    private PriceView? PriceOn(DateOnly date)
+    {
+        if (Prices is null || !Prices.TryGetValue(date, out var cell))
+            return null;
+        var cheapest = _priceMax > 0m && cell.Price <= _priceMin;
+        return new PriceView(MoneyLabel(cell.Price, Currency), cell.Price, cell.Source, cell.Stale, cheapest);
+    }
+
+    private string? HeatStyle(PriceView? price)
+    {
+        if (price is null || _priceMax <= _priceMin)
+            return null;
+
+        // Normalize cheapest→0..dearest→1; tint cheap = cool/green, dear = warm/red, via a subtle background.
+        var t = (double)((price.Price - _priceMin) / (_priceMax - _priceMin));
+        var hue = 130 - (int)(t * 130); // 130 (green) → 0 (red)
+        return $"--price-heat:hsl({hue} 70% 45%);";
+    }
+
+    private static string CellAria(DateOnly date, PriceView? price)
+    {
+        var label = date.ToString("D");
+        return price is null ? label : $"{label}, from {price.Label}";
+    }
+
+    private static string PriceTitle(PriceView price)
+    {
+        var body = price.Stale ? $"{price.Label} (indicative, last known)" : price.Label;
+        return price.Source is null ? body : $"{body} · {price.Source}";
+    }
+
+    private static string MoneyLabel(decimal amount, string currency)
+    {
+        var symbol = currency switch
+        {
+            "USD" => "$",
+            "EUR" => "€",
+            "GBP" => "£",
+            _ => "",
+        };
+        var rounded = Math.Round(amount, MidpointRounding.AwayFromZero);
+        return symbol.Length > 0 ? $"{symbol}{rounded:0}" : $"{rounded:0} {currency}";
+    }
+
+    private sealed record PriceView(string Label, decimal Price, string? Source, bool Stale, bool Cheapest);
+
+    private IReadOnlyList<Cell> Cells => BuildCells(Month);
+
+    private readonly record struct Cell(DateOnly Date, bool InMonth, bool IsToday);
+
+    private List<EventDto> EventsOn(DateOnly date)
+    {
+        if (Events is null || Events.Count == 0)
+            return new List<EventDto>();
+
+        return Events
+            .Where(e => Covers(e, date))
+            .OrderBy(e => e.AllDay ? 0 : 1)
+            .ThenBy(e => e.StartUtc)
+            .ToList();
+    }
+
+    private static bool Covers(EventDto e, DateOnly date)
+    {
+        var start = DateOnly.FromDateTime(e.StartUtc.UtcDateTime);
+        var end = DateOnly.FromDateTime(e.EndUtc.UtcDateTime);
+        if (end < start) end = start;
+        return date >= start && date <= end;
+    }
+
+    private static string Color(EventDto e) =>
+        string.IsNullOrWhiteSpace(e.Color) ? HueColor(e.CalendarId) : e.Color!;
+
+    private static string HueColor(Guid id)
+    {
+        var hue = (uint)id.GetHashCode() % 360;
+        return $"hsl({hue} 60% 45%)";
+    }
+
+    private static string ChipTitle(EventDto e) =>
+        string.IsNullOrWhiteSpace(e.Location) ? e.Title : $"{e.Title} · {e.Location}";
+
+    /// <summary>What a screen reader announces for a focusable chip: title, when, where (a11y pass).</summary>
+    private static string ChipAria(EventDto e)
+    {
+        var when = e.AllDay ? e.StartUtc.ToString("MMMM d") : e.StartUtc.ToString("MMMM d, HH:mm");
+        return string.IsNullOrWhiteSpace(e.Location)
+            ? $"{e.Title}, {when}. Open in editor."
+            : $"{e.Title}, {when}, {e.Location}. Open in editor.";
+    }
+
+    /// <summary>Keyboard activation for chips (Enter/Space), matching their button role (a11y pass).</summary>
+    private Task OnChipKeyAsync(KeyboardEventArgs e, EventDto ev) =>
+        OnEventClick.HasDelegate && e.Key is "Enter" or " "
+            ? OnEventClick.InvokeAsync(ev)
+            : Task.CompletedTask;
+
+    private static IReadOnlyList<Cell> BuildCells(DateOnly month)
+    {
+        var today = DateOnly.FromDateTime(DateTime.Today);
+        var first = new DateOnly(month.Year, month.Month, 1);
+        var offset = ((int)first.DayOfWeek + 6) % 7; // Monday-first
+        var start = first.AddDays(-offset);
+
+        var cells = new List<Cell>(42);
+        for (var i = 0; i < 42; i++)
+        {
+            var date = start.AddDays(i);
+            cells.Add(new Cell(date, date.Month == month.Month, date == today));
+        }
+        return cells;
+    }
+}
